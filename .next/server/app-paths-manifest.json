@@ -1,0 +1,10 @@
+{
+  "/(auth)/login/page": "app/(auth)/login/page.js",
+  "/(auth)/register/page": "app/(auth)/register/page.js",
+  "/[slug]/page": "app/[slug]/page.js",
+  "/(admin)/dashboard/page": "app/(admin)/dashboard/page.js",
+  "/api/whatsapp/notify/route": "app/api/whatsapp/notify/route.js",
+  "/api/appointments/cancel/route": "app/api/appointments/cancel/route.js",
+  "/cancelar/[token]/page": "app/cancelar/[token]/page.js",
+  "/(admin)/onboarding/page": "app/(admin)/onboarding/page.js"
+}
