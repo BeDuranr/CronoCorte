@@ -137,12 +137,12 @@ describe('calculateAvailableSlots', () => {
     date: FUTURE_DATE,
   }
 
-  it('genera slots cada 30 minutos dentro del horario', () => {
+  it('genera slots cada 60 minutos dentro del horario', () => {
     const slots = calculateAvailableSlots(baseParams)
     expect(slots).toContain('09:00')
-    expect(slots).toContain('09:30')
+    expect(slots).not.toContain('09:30') // granularidad es 1 hora
     expect(slots).toContain('10:00')
-    expect(slots).toContain('10:30')
+    expect(slots).not.toContain('10:30')
     expect(slots).not.toContain('11:00') // el servicio terminaría a las 11:30
   })
 
@@ -166,12 +166,11 @@ describe('calculateAvailableSlots', () => {
       ],
     })
     expect(slots).not.toContain('09:00')
-    expect(slots).toContain('09:30')
+    expect(slots).toContain('10:00')
   })
 
   it('excluye slots que se solapan con una cita existente', () => {
     // Cita de 09:15 a 09:45 → bloquea slot 09:00 (termina en 09:30, se solapa)
-    // y slot 09:30 (empieza antes de que termine la cita)
     const slots = calculateAvailableSlots({
       ...baseParams,
       existingAppointments: [
@@ -182,7 +181,6 @@ describe('calculateAvailableSlots', () => {
       ],
     })
     expect(slots).not.toContain('09:00')
-    expect(slots).not.toContain('09:30')
     expect(slots).toContain('10:00')
   })
 
@@ -211,9 +209,10 @@ describe('calculateAvailableSlots', () => {
       serviceDuration: 60,
     })
     expect(slots).toContain('09:00')
-    expect(slots).toContain('09:30')
+    expect(slots).not.toContain('09:30') // granularidad 60 min
     expect(slots).toContain('10:00')
-    // 10:30 + 60min = 11:30 > 11:00, no debe aparecer
-    expect(slots).not.toContain('10:30')
+    // 10:00 + 60min = 11:00, exactamente al cierre — sí cabe
+    // 11:00 + 60min = 12:00 > 11:00 — no debe aparecer
+    expect(slots).not.toContain('11:00')
   })
 })

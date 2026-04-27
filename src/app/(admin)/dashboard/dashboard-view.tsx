@@ -112,7 +112,8 @@ function AppointmentCard({ appt, onStatusChange }: { appt: any; onStatusChange: 
         )}
       </div>
 
-      {(appt.status === 'confirmed' || appt.status === 'pending_payment') && (
+      {(appt.status === 'confirmed' || appt.status === 'pending_payment') &&
+        new Date(appt.ends_at) > new Date() && (
         <div className="flex gap-2 mt-1">
           <button
             onClick={markComplete}

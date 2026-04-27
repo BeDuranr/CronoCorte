@@ -44,44 +44,59 @@ interface Props {
   availability: { day_of_week: number; start_time: string; end_time: string }[]
 }
 
-// ─── Step 1: Service selection ────────────────────────────────────────────────
+// ─── Step 1: Service selection (multi) ────────────────────────────────────────
 function StepService({
   services,
   selected,
-  onSelect,
+  onToggle,
 }: {
   services: Service[]
-  selected: Service | null
-  onSelect: (s: Service) => void
+  selected: Service[]
+  onToggle: (s: Service) => void
 }) {
+  const total = selected.reduce((sum, s) => sum + s.price, 0)
+  const totalDuration = selected.reduce((sum, s) => sum + s.duration_minutes, 0)
+
   return (
     <div className="flex flex-col gap-3">
-      {services.map(svc => (
-        <button
-          key={svc.id}
-          onClick={() => onSelect(svc)}
-          className={`card p-4 text-left transition-all hover:border-brand-red/40 ${
-            selected?.id === svc.id ? 'border-brand-red bg-brand-red/5' : ''
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-[rgb(var(--fg))]">{svc.name}</p>
-              <p className="text-sm text-[rgb(var(--fg-secondary))] mt-0.5 flex items-center gap-1">
-                <Clock size={12} /> {svc.duration_minutes} min
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="font-bold text-[rgb(var(--fg))]">{formatPrice(svc.price)}</span>
-              {selected?.id === svc.id && (
-                <div className="w-5 h-5 rounded-full bg-brand-red flex items-center justify-center">
-                  <Check size={12} className="text-white" />
+      {services.map(svc => {
+        const isSelected = selected.some(s => s.id === svc.id)
+        return (
+          <button
+            key={svc.id}
+            onClick={() => onToggle(svc)}
+            className={`card p-4 text-left transition-all hover:border-brand-red/40 ${
+              isSelected ? 'border-brand-red bg-brand-red/5' : ''
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-[rgb(var(--fg))]">{svc.name}</p>
+                <p className="text-sm text-[rgb(var(--fg-secondary))] mt-0.5 flex items-center gap-1">
+                  <Clock size={12} /> {svc.duration_minutes} min
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="font-bold text-[rgb(var(--fg))]">{formatPrice(svc.price)}</span>
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                  isSelected ? 'bg-brand-red border-brand-red' : 'border-[rgb(var(--fg-secondary))]/30'
+                }`}>
+                  {isSelected && <Check size={11} className="text-white" />}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        </button>
-      ))}
+          </button>
+        )
+      })}
+
+      {selected.length > 0 && (
+        <div className="card p-3 border-brand-red/20 bg-brand-red/5 flex items-center justify-between text-sm">
+          <span className="text-[rgb(var(--fg-secondary))]">
+            {selected.length} servicio{selected.length > 1 ? 's' : ''} · {totalDuration} min
+          </span>
+          <span className="font-bold text-brand-red">{formatPrice(total)}</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -286,14 +301,14 @@ function StepDateTime({
 // ─── Step 4: Confirm ──────────────────────────────────────────────────────────
 function StepConfirm({
   barbershopId,
-  service,
+  services,
   worker,
   date,
   time,
   onSuccess,
 }: {
   barbershopId: string
-  service: Service
+  services: Service[]
   worker: Worker
   date: Date
   time: string
@@ -303,9 +318,13 @@ function StepConfirm({
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({ name: '', phone: '', notes: '' })
 
-  const startsAt = `${format(date, 'yyyy-MM-dd')}T${time}:00`
-  const endDate = new Date(`${format(date, 'yyyy-MM-dd')}T${time}:00`)
-  endDate.setMinutes(endDate.getMinutes() + service.duration_minutes)
+  const totalDuration = services.reduce((sum, s) => sum + s.duration_minutes, 0)
+  const totalPrice = services.reduce((sum, s) => sum + s.price, 0)
+  const primaryService = services[0]
+
+  const localStart = new Date(`${format(date, 'yyyy-MM-dd')}T${time}:00`)
+  const startsAt = localStart.toISOString().slice(0, 19)
+  const endDate = new Date(localStart.getTime() + totalDuration * 60_000)
   const endsAt = endDate.toISOString().slice(0, 19)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -317,15 +336,22 @@ function StepConfirm({
     setLoading(true)
     const cancelToken = crypto.randomUUID().replace(/-/g, '')
     try {
+      // Si hay más de un servicio, concatenar nombres en las notas
+      const extraServices = services.slice(1).map(s => s.name).join(', ')
+      const combinedNotes = [
+        extraServices ? `Servicios adicionales: ${extraServices}` : '',
+        form.notes.trim(),
+      ].filter(Boolean).join('\n') || null
+
       const { data, error } = await supabase
         .from('appointments')
         .insert({
           barbershop_id: barbershopId,
           worker_id: worker.id,
-          service_id: service.id,
+          service_id: primaryService.id,
           client_name: form.name.trim(),
           client_phone: form.phone.trim().startsWith('+') ? form.phone.trim() : `+56${form.phone.trim()}`,
-          notes: form.notes.trim() || null,
+          notes: combinedNotes,
           starts_at: startsAt,
           ends_at: endsAt,
           status: 'pending_payment',
@@ -358,11 +384,19 @@ function StepConfirm({
         <h3 className="font-semibold text-sm text-[rgb(var(--fg-secondary))] uppercase tracking-wide">
           Resumen de tu reserva
         </h3>
-        <div className="flex items-center gap-2">
-          <Scissors size={14} className="text-brand-red" />
-          <span className="text-sm font-medium text-[rgb(var(--fg))]">{service.name}</span>
-          <span className="ml-auto text-sm font-bold text-[rgb(var(--fg))]">{formatPrice(service.price)}</span>
-        </div>
+        {services.map(svc => (
+          <div key={svc.id} className="flex items-center gap-2">
+            <Scissors size={14} className="text-brand-red shrink-0" />
+            <span className="text-sm font-medium text-[rgb(var(--fg))]">{svc.name}</span>
+            <span className="ml-auto text-sm font-bold text-[rgb(var(--fg))]">{formatPrice(svc.price)}</span>
+          </div>
+        ))}
+        {services.length > 1 && (
+          <div className="flex justify-between text-xs text-[rgb(var(--fg-secondary))] border-t border-[rgb(var(--fg-secondary))]/10 pt-2 mt-1">
+            <span>Total · {totalDuration} min</span>
+            <span className="font-bold text-brand-red">{formatPrice(totalPrice)}</span>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <div className="w-3.5 h-3.5 rounded-full bg-brand-red/10 text-brand-red flex items-center justify-center text-[8px] font-bold">
             {worker.name.charAt(0)}
@@ -372,7 +406,7 @@ function StepConfirm({
         <div className="flex items-center gap-2">
           <Clock size={14} className="text-brand-red" />
           <span className="text-sm text-[rgb(var(--fg))]">
-            {format(date, "EEE d 'de' MMMM", { locale: es })} · {time} ({service.duration_minutes} min)
+            {format(date, "EEE d 'de' MMMM", { locale: es })} · {time} ({totalDuration} min)
           </span>
         </div>
       </div>
@@ -426,19 +460,27 @@ function StepConfirm({
 }
 
 // ─── Success screen ───────────────────────────────────────────────────────────
-function BookingSuccess({ service, worker, date, time, barbershop, cancelToken }: any) {
+function BookingSuccess({ services, worker, date, time, barbershop, cancelToken }: any) {
   const dateLabel = format(date, "EEEE d 'de' MMMM", { locale: es })
-  const priceLabel = formatPrice(service.price)
+  const totalPrice = services.reduce((sum: number, s: any) => sum + s.price, 0)
+  const serviceNames = services.map((s: any) => s.name).join(' + ')
+
+  // Calcular hora límite de pago (30 min desde ahora)
+  const paymentDeadline = new Date(Date.now() + 30 * 60 * 1000)
+  const deadlineStr = paymentDeadline.toLocaleTimeString('es-CL', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 
   // Build pre-filled WhatsApp message
   const waMessage = [
     `Hola! Reservé una hora en ${barbershop.name}.`,
     ``,
     `*Detalle:*`,
-    `- Servicio: ${service.name}`,
+    `- Servicio: ${serviceNames}`,
     `- Barbero: ${worker.name}`,
     `- Fecha: ${dateLabel} a las ${time}`,
-    `- Precio: ${priceLabel}`,
+    `- Precio: ${formatPrice(totalPrice)}`,
     ``,
     barbershop.transfer_info
       ? `*Datos de transferencia:*\n${barbershop.transfer_info}\n`
@@ -461,13 +503,28 @@ function BookingSuccess({ service, worker, date, time, barbershop, cancelToken }
         </p>
       </div>
 
+      {/* Aviso plazo de pago */}
+      <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 mb-4 flex items-start gap-3">
+        <span className="text-yellow-500 text-lg leading-none mt-0.5">⏳</span>
+        <div>
+          <p className="text-sm font-semibold text-yellow-500">Tienes 30 minutos para pagar</p>
+          <p className="text-xs text-[rgb(var(--fg-secondary))] mt-0.5">
+            Si no recibimos el comprobante antes de las{' '}
+            <strong className="text-[rgb(var(--fg))]">{deadlineStr}</strong>, tu hora será
+            liberada automáticamente.
+          </p>
+        </div>
+      </div>
+
       {/* Resumen */}
       <div className="card p-4 mb-4">
         <div className="flex flex-col gap-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-[rgb(var(--fg-secondary))]">Servicio</span>
-            <span className="font-medium text-[rgb(var(--fg))]">{service.name}</span>
-          </div>
+          {services.map((svc: any) => (
+            <div key={svc.id} className="flex justify-between">
+              <span className="text-[rgb(var(--fg-secondary))]">{svc.name}</span>
+              <span className="font-medium text-[rgb(var(--fg))]">{formatPrice(svc.price)}</span>
+            </div>
+          ))}
           <div className="flex justify-between">
             <span className="text-[rgb(var(--fg-secondary))]">Barbero</span>
             <span className="font-medium text-[rgb(var(--fg))]">{worker.name}</span>
@@ -480,7 +537,7 @@ function BookingSuccess({ service, worker, date, time, barbershop, cancelToken }
           </div>
           <div className="flex justify-between border-t border-[rgb(var(--fg-secondary))]/10 pt-2 mt-1">
             <span className="text-[rgb(var(--fg-secondary))]">Total a transferir</span>
-            <span className="font-bold text-brand-red text-base">{priceLabel}</span>
+            <span className="font-bold text-brand-red text-base">{formatPrice(totalPrice)}</span>
           </div>
         </div>
       </div>
@@ -543,14 +600,25 @@ const STEPS = ['Servicio', 'Barbero', 'Fecha y hora', 'Confirmar']
 
 export function BookingFlow({ barbershop, services, workers, availability }: Props) {
   const [step, setStep] = useState(0)
-  const [selectedService, setSelectedService] = useState<Service | null>(null)
+  const [selectedServices, setSelectedServices] = useState<Service[]>([])
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [successData, setSuccessData] = useState<{ id: string; cancelToken: string } | null>(null)
 
+  const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0)
+
+  const toggleService = (svc: Service) => {
+    setSelectedServices(prev =>
+      prev.some(s => s.id === svc.id)
+        ? prev.filter(s => s.id !== svc.id)
+        : [...prev, svc]
+    )
+    setSelectedTime(null)
+  }
+
   const canProceed = () => {
-    if (step === 0) return !!selectedService
+    if (step === 0) return selectedServices.length > 0
     if (step === 1) return !!selectedWorker
     if (step === 2) return !!selectedTime
     return false
@@ -609,7 +677,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
       <div className="max-w-lg mx-auto px-4 py-6">
         {successData ? (
           <BookingSuccess
-            service={selectedService}
+            services={selectedServices}
             worker={selectedWorker}
             date={selectedDate}
             time={selectedTime}
@@ -639,15 +707,18 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
 
             {/* Step content */}
             {step === 0 && (
-              <StepService
-                services={services}
-                selected={selectedService}
-                onSelect={svc => {
-                  setSelectedService(svc)
-                  setSelectedTime(null) // resetear hora si cambia servicio
-                  setStep(1)
-                }}
-              />
+              <>
+                <StepService
+                  services={services}
+                  selected={selectedServices}
+                  onToggle={toggleService}
+                />
+                {selectedServices.length > 0 && (
+                  <button onClick={() => setStep(1)} className="btn-primary w-full mt-4">
+                    Continuar <ChevronRight size={16} className="inline ml-1" />
+                  </button>
+                )}
+              </>
             )}
             {step === 1 && (
               <StepWorker
@@ -655,12 +726,12 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
                 selected={selectedWorker}
                 onSelect={wk => {
                   setSelectedWorker(wk)
-                  setSelectedTime(null) // resetear hora si cambia barbero
+                  setSelectedTime(null)
                   setStep(2)
                 }}
               />
             )}
-            {step === 2 && selectedService && selectedWorker && (
+            {step === 2 && selectedServices.length > 0 && selectedWorker && (
               <>
                 <StepDateTime
                   selectedDate={selectedDate}
@@ -670,7 +741,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
                   availability={availability}
                   barbershopId={barbershop.id}
                   workerId={selectedWorker.id}
-                  serviceDuration={selectedService.duration_minutes}
+                  serviceDuration={totalDuration}
                 />
                 {selectedTime && (
                   <button onClick={() => setStep(3)} className="btn-primary w-full mt-4">
@@ -679,10 +750,10 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
                 )}
               </>
             )}
-            {step === 3 && selectedService && selectedWorker && selectedTime && (
+            {step === 3 && selectedServices.length > 0 && selectedWorker && selectedTime && (
               <StepConfirm
                 barbershopId={barbershop.id}
-                service={selectedService}
+                services={selectedServices}
                 worker={selectedWorker}
                 date={selectedDate}
                 time={selectedTime}

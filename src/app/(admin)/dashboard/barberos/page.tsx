@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Navbar } from '@/components/layout/navbar'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, Check, X, Loader2, Mail, Link as LinkIcon } from 'lucide-react'
+import { Plus, Pencil, Check, X, Loader2, Mail, Link as LinkIcon, Trash2 } from 'lucide-react'
 
 interface Worker {
   id: string
@@ -75,6 +75,25 @@ export default function BarberosPage() {
       toast.error(err.message || 'Error al invitar')
     } finally {
       setAddLoading(false)
+    }
+  }
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`¿Eliminar a ${name}? Esta acción no se puede deshacer y borrará su cuenta de acceso.`)) return
+    try {
+      const res = await fetch('/api/workers/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worker_id: id }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.message)
+      }
+      toast.success(`${name} eliminado`)
+      setWorkers(w => w.filter(wk => wk.id !== id))
+    } catch (err: any) {
+      toast.error(err.message || 'Error al eliminar')
     }
   }
 
@@ -225,6 +244,13 @@ export default function BarberosPage() {
                             className="p-1.5 rounded-lg text-[rgb(var(--fg-secondary))] hover:bg-[rgb(var(--bg-secondary))] transition-all"
                           >
                             <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(worker.id, worker.name)}
+                            className="p-1.5 rounded-lg text-[rgb(var(--fg-secondary))] hover:bg-brand-red/10 hover:text-brand-red transition-all"
+                            title="Eliminar barbero"
+                          >
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </div>

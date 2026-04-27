@@ -76,7 +76,7 @@ export function calculateAvailableSlots({
       slots.push(format(current, 'HH:mm'))
     }
 
-    current = addMinutes(current, 30) // granularidad de 30 min
+    current = addMinutes(current, 60) // granularidad de 1 hora
   }
 
   return slots

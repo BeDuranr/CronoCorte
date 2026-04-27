@@ -126,10 +126,28 @@ ${shop?.address ? `📍 ${shop.address}` : `📍 ${shop?.name}`}
     }
   }
 
+  // ─── Auto-cerrar citas ────────────────────────────────────────────────────────
+  // pending_payment con más de 30 min desde creación → cancelled (venció el plazo de pago)
+  const paymentDeadline = new Date(now.getTime() - 30 * 60 * 1000)
+  const { count: cancelledCount } = await supabase
+    .from('appointments')
+    .update({ status: 'cancelled' })
+    .eq('status', 'pending_payment')
+    .lt('created_at', paymentDeadline.toISOString())
+
+  // confirmed cuya hora ya terminó → completed (asistió y pagó)
+  const { count: completedCount } = await supabase
+    .from('appointments')
+    .update({ status: 'completed' })
+    .eq('status', 'confirmed')
+    .lt('ends_at', now.toISOString())
+
   return NextResponse.json({
     ok: true,
     sent24h,
     sent1h,
+    autoCancelled: cancelledCount ?? 0,
+    autoCompleted: completedCount ?? 0,
     checkedAt: now.toISOString(),
   })
 }
