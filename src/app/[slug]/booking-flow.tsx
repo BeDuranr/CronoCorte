@@ -343,9 +343,10 @@ function StepConfirm({
         form.notes.trim(),
       ].filter(Boolean).join('\n') || null
 
-      const { data, error } = await supabase
-        .from('appointments')
-        .insert({
+      const res = await fetch('/api/appointments/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           barbershop_id: barbershopId,
           worker_id: worker.id,
           service_id: primaryService.id,
@@ -354,13 +355,12 @@ function StepConfirm({
           notes: combinedNotes,
           starts_at: startsAt,
           ends_at: endsAt,
-          status: 'pending_payment',
           cancel_token: cancelToken,
-        })
-        .select('id')
-        .single()
+        }),
+      })
 
-      if (error) throw error
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error al reservar')
 
       // Enviar notificación WhatsApp al cliente
       fetch('/api/whatsapp/notify', {
