@@ -93,7 +93,7 @@ function verifyTwilioSignature(req: NextRequest, body: URLSearchParams): boolean
   const url = `${process.env.NEXT_PUBLIC_APP_URL}/api/whatsapp/webhook`
 
   // Ordenar params y concatenar al URL
-  const sortedParams = [...body.entries()]
+  const sortedParams = Array.from(body.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .reduce((str, [k, v]) => str + k + v, url)
 
