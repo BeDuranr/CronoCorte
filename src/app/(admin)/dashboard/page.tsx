@@ -28,9 +28,11 @@ export default async function DashboardPage() {
 
   if (!barbershop) redirect('/onboarding')
 
-  // Today's appointments
+  // Upcoming appointments (from now, next 60 days)
   const today = new Date()
   const todayStr = today.toISOString().split('T')[0]
+  const future = new Date(today)
+  future.setDate(today.getDate() + 60)
 
   const { data: todayAppointments } = await supabase
     .from('appointments')
@@ -40,8 +42,8 @@ export default async function DashboardPage() {
       workers(name)
     `)
     .eq('barbershop_id', barbershop.id)
-    .gte('starts_at', `${todayStr}T00:00:00`)
-    .lte('starts_at', `${todayStr}T23:59:59`)
+    .gte('starts_at', new Date().toISOString())
+    .lte('starts_at', future.toISOString())
     .not('status', 'eq', 'cancelled')
     .order('starts_at', { ascending: true })
 

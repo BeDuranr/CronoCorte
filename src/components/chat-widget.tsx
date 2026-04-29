@@ -25,10 +25,12 @@ export function ChatWidget({ barbershopId, barbershopSlug, agentName = 'Asistent
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [streaming, setStreaming] = useState(false)
   const [pendingImages, setPendingImages] = useState<{ base64: string; preview: string; mimeType: string }[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const streamRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -92,14 +94,29 @@ export function ChatWidget({ barbershopId, barbershopSlug, agentName = 'Asistent
         }),
       })
       const data = await res.json()
-      setMessages(prev => [...prev, { role: 'agent', content: data.reply }])
+      const reply: string = data.reply ?? 'Hubo un problema al conectar. Intenta de nuevo.'
+      setMessages(prev => [...prev, { role: 'agent', content: '' }])
+      setLoading(false)
+      setStreaming(true)
+      let i = 0
+      streamRef.current = setInterval(() => {
+        i++
+        setMessages(prev => {
+          const updated = [...prev]
+          updated[updated.length - 1] = { role: 'agent', content: reply.slice(0, i) }
+          return updated
+        })
+        if (i >= reply.length) {
+          clearInterval(streamRef.current!)
+          streamRef.current = null
+          setStreaming(false)
+        }
+      }, 15)
     } catch {
       setMessages(prev => [
         ...prev,
         { role: 'agent', content: 'Hubo un problema al conectar. Intenta de nuevo.' },
       ])
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -214,7 +231,7 @@ export function ChatWidget({ barbershopId, barbershopSlug, agentName = 'Asistent
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === 'Enter' && !e.shiftKey && !streaming) {
                   e.preventDefault()
                   sendMessage()
                 }
@@ -222,7 +239,7 @@ export function ChatWidget({ barbershopId, barbershopSlug, agentName = 'Asistent
             />
             <button
               onClick={sendMessage}
-              disabled={loading || (!input.trim() && pendingImages.length === 0)}
+              disabled={loading || streaming || (!input.trim() && pendingImages.length === 0)}
               className="p-2 rounded-xl bg-brand-red text-white hover:opacity-90 disabled:opacity-40 transition-all shrink-0"
             >
               <Send size={16} />

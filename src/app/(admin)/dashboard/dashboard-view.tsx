@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { format, isToday, parseISO } from 'date-fns'
+import { useState, useMemo } from 'react'
+import { format, isToday, isTomorrow, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { formatPrice } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -140,7 +140,8 @@ export function DashboardView({ barbershop, todayAppointments, weekStats, worker
   const supabase = createClient()
 
   const refresh = async () => {
-    const todayStr = new Date().toISOString().split('T')[0]
+    const future = new Date()
+    future.setDate(future.getDate() + 60)
     const { data } = await supabase
       .from('appointments')
       .select(`
@@ -149,12 +150,30 @@ export function DashboardView({ barbershop, todayAppointments, weekStats, worker
         workers(name)
       `)
       .eq('barbershop_id', barbershop.id)
-      .gte('starts_at', `${todayStr}T00:00:00`)
-      .lte('starts_at', `${todayStr}T23:59:59`)
+      .gte('starts_at', new Date().toISOString())
+      .lte('starts_at', future.toISOString())
       .not('status', 'eq', 'cancelled')
       .order('starts_at', { ascending: true })
 
     if (data) setAppointments(data as any[])
+  }
+
+  // Group by day
+  const grouped = useMemo(() => {
+    const map: Record<string, any[]> = {}
+    appointments.forEach(a => {
+      const day = a.starts_at.slice(0, 10)
+      if (!map[day]) map[day] = []
+      map[day].push(a)
+    })
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
+  }, [appointments])
+
+  const formatDayLabel = (dateStr: string) => {
+    const d = parseISO(dateStr)
+    if (isToday(d)) return 'Hoy'
+    if (isTomorrow(d)) return 'Mañana'
+    return format(d, "EEEE d 'de' MMMM", { locale: es })
   }
 
   const greeting = () => {
@@ -189,13 +208,17 @@ export function DashboardView({ barbershop, todayAppointments, weekStats, worker
           {
             icon: Calendar,
             label: 'Citas hoy',
-            value: appointments.length,
+            value: appointments.filter(a => a.starts_at.startsWith(new Date().toISOString().slice(0, 10))).length,
             color: 'text-blue-500',
           },
           {
             icon: CheckCircle2,
-            label: 'Completadas',
-            value: appointments.filter(a => a.status === 'completed').length,
+            label: 'Próximas 7 días',
+            value: appointments.filter(a => {
+              const d = new Date(a.starts_at)
+              const limit = new Date(); limit.setDate(limit.getDate() + 7)
+              return d <= limit
+            }).length,
             color: 'text-green-500',
           },
           {
@@ -222,22 +245,22 @@ export function DashboardView({ barbershop, todayAppointments, weekStats, worker
       </div>
 
       <div className="grid md:grid-cols-3 gap-6">
-        {/* Today's agenda */}
+        {/* Upcoming agenda */}
         <div className="md:col-span-2">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-bold text-[rgb(var(--fg))]">Agenda de hoy</h2>
+            <h2 className="font-bold text-[rgb(var(--fg))]">Próximas citas</h2>
             <Link
               href="/dashboard/citas"
               className="text-xs text-brand-red hover:underline flex items-center gap-1"
             >
-              Ver todas <ChevronRight size={12} />
+              Ver historial <ChevronRight size={12} />
             </Link>
           </div>
 
-          {appointments.length === 0 ? (
+          {grouped.length === 0 ? (
             <div className="card p-8 text-center">
               <Calendar size={32} className="text-[rgb(var(--fg-secondary))]/40 mx-auto mb-3" />
-              <p className="text-[rgb(var(--fg-secondary))] text-sm">No hay citas para hoy</p>
+              <p className="text-[rgb(var(--fg-secondary))] text-sm">No hay citas próximas</p>
               <a
                 href={`/${barbershop.slug}`}
                 target="_blank"
@@ -247,9 +270,18 @@ export function DashboardView({ barbershop, todayAppointments, weekStats, worker
               </a>
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
-              {appointments.map(appt => (
-                <AppointmentCard key={appt.id} appt={appt} onStatusChange={refresh} />
+            <div className="flex flex-col gap-5">
+              {grouped.map(([day, appts]) => (
+                <div key={day}>
+                  <p className="text-xs font-semibold text-[rgb(var(--fg-secondary))] uppercase tracking-wider mb-2 capitalize">
+                    {formatDayLabel(`${day}T12:00:00`)}
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    {appts.map(appt => (
+                      <AppointmentCard key={appt.id} appt={appt} onStatusChange={refresh} />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           )}
