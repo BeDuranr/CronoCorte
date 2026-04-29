@@ -22,6 +22,24 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient()
 
+    // Verificar que el slot no esté ya ocupado para ese barbero
+    const { data: conflict } = await supabase
+      .from('appointments')
+      .select('id')
+      .eq('worker_id', worker_id)
+      .not('status', 'eq', 'cancelled')
+      .lt('starts_at', ends_at)
+      .gt('ends_at', starts_at)
+      .limit(1)
+      .single()
+
+    if (conflict) {
+      return NextResponse.json(
+        { error: 'Ese horario ya fue reservado. Por favor elige otro.' },
+        { status: 409 }
+      )
+    }
+
     const { data, error } = await supabase
       .from('appointments')
       .insert({
