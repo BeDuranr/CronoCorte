@@ -33,11 +33,30 @@ async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number): P
   reason: string
 }> {
   try {
-    // Fetch the image and convert to base64
-    const imgRes = await fetch(imageUrl)
+    const twilioAuth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64')
+
+    // Twilio puede redirigir — seguimos el redirect manualmente con credenciales
+    let finalUrl = imageUrl
+    const headRes = await fetch(imageUrl, {
+      method: 'GET',
+      headers: { Authorization: `Basic ${twilioAuth}` },
+      redirect: 'manual',
+    })
+    if (headRes.status === 301 || headRes.status === 302 || headRes.status === 307) {
+      finalUrl = headRes.headers.get('location') ?? imageUrl
+    }
+
+    const imgRes = await fetch(finalUrl, {
+      headers: { Authorization: `Basic ${twilioAuth}` },
+    })
+    if (!imgRes.ok) {
+      console.error('Failed to fetch Twilio media:', imgRes.status)
+      return { verified: false, reason: 'No se pudo descargar la imagen' }
+    }
     const imgBuffer = await imgRes.arrayBuffer()
     const imgBase64 = Buffer.from(imgBuffer).toString('base64')
-    const mimeType = imgRes.headers.get('content-type') || 'image/jpeg'
+    const mimeType = imgRes.headers.get('content-type') ?? 'image/jpeg'
+    const validMime = mimeType.startsWith('image/') ? mimeType : 'image/jpeg'
 
     const response = await groq.chat.completions.create({
       model: VISION_MODEL,
@@ -47,7 +66,7 @@ async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number): P
           content: [
             {
               type: 'image_url',
-              image_url: { url: `data:${mimeType};base64,${imgBase64}` },
+              image_url: { url: `data:${validMime};base64,${imgBase64}`, detail: 'high' },
             },
             {
               type: 'text',
