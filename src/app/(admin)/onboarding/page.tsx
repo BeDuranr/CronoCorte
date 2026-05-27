@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { DAYS, formatPrice } from '@/lib/utils'
@@ -405,13 +405,6 @@ function StepWorkers({
     setLoading(true)
     try {
       for (const worker of valid) {
-        // Invite worker via Supabase Auth (sends magic link to their email)
-        const { data: inviteData, error: inviteErr } = await supabase.auth.admin
-          ? // admin client not available client-side; use API route instead
-          { data: null, error: new Error('use-api') }
-          : { data: null, error: new Error('use-api') }
-
-        // Fallback: call our API route to create worker
         const res = await fetch('/api/workers/invite', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -517,8 +510,8 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(0)
   const [shopId, setShopId] = useState<string | null>(null)
 
-  // Load shopId on mount
-  useState(() => {
+  // Cargar shopId al montar el componente
+  useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return router.push('/login')
       const { data } = await supabase
@@ -528,7 +521,7 @@ export default function OnboardingPage() {
         .single()
       if (data) setShopId(data.id)
     })
-  })
+  }, [])
 
   const next = () => setStep(s => s + 1)
   const finish = () => {
