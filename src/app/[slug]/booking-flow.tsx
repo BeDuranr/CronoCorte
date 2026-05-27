@@ -322,10 +322,21 @@ function StepConfirm({
   const totalPrice = services.reduce((sum, s) => sum + s.price, 0)
   const primaryService = services[0]
 
-  const localStart = new Date(`${format(date, 'yyyy-MM-dd')}T${time}:00`)
-  const startsAt = localStart.toISOString().slice(0, 19)
-  const endDate = new Date(localStart.getTime() + totalDuration * 60_000)
-  const endsAt = endDate.toISOString().slice(0, 19)
+  // Construir timestamps preservando la hora local del cliente (zona Chile)
+  // getTimezoneOffset() retorna minutos de diferencia con UTC (ej: 240 para UTC-4)
+  const dateStr = format(date, 'yyyy-MM-dd')
+  const localStart = new Date(`${dateStr}T${time}:00`)
+  const offsetMinutes = localStart.getTimezoneOffset()
+  const offsetSign = offsetMinutes <= 0 ? '+' : '-'
+  const offsetAbs = Math.abs(offsetMinutes)
+  const offsetHH = String(Math.floor(offsetAbs / 60)).padStart(2, '0')
+  const offsetMM = String(offsetAbs % 60).padStart(2, '0')
+  const tzOffset = `${offsetSign}${offsetHH}:${offsetMM}`
+  const startsAt = `${dateStr}T${time}:00${tzOffset}`
+  const endLocal = new Date(localStart.getTime() + totalDuration * 60_000)
+  const endHH = String(endLocal.getHours()).padStart(2, '0')
+  const endMM = String(endLocal.getMinutes()).padStart(2, '0')
+  const endsAt = `${dateStr}T${endHH}:${endMM}:00${tzOffset}`
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
