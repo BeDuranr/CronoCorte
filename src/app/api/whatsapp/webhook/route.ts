@@ -27,10 +27,39 @@ async function sendWhatsApp(to: string, body: string) {
   })
 }
 
+// Retorna true si la fecha del comprobante es hoy o ayer (Chile, tolerancia nocturna)
+function isReceiptDateValid(receiptDate: string | null): boolean {
+  if (!receiptDate) return false
+
+  try {
+    // Normalizar separadores: "25/04/2025", "25-04-2025" o "2025-04-25"
+    const normalized = receiptDate.replace(/\//g, '-')
+    const parsed = new Date(
+      normalized.includes('T') ? normalized : `${normalized}T12:00:00`
+    )
+    if (isNaN(parsed.getTime())) return false
+
+    // Fecha actual en Chile (UTC-3 / UTC-4 según horario)
+    const nowChile = new Date(
+      new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' })
+    )
+    const todayChile = new Date(nowChile.getFullYear(), nowChile.getMonth(), nowChile.getDate())
+    const yesterdayChile = new Date(todayChile)
+    yesterdayChile.setDate(todayChile.getDate() - 1)
+
+    const receiptDay = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
+
+    return receiptDay >= yesterdayChile && receiptDay <= todayChile
+  } catch {
+    return false
+  }
+}
+
 async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number): Promise<{
   verified: boolean
   amount?: number
   reason: string
+  dateIssue?: boolean
 }> {
   try {
     const twilioAuth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64')
@@ -58,6 +87,14 @@ async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number): P
     const mimeType = imgRes.headers.get('content-type') ?? 'image/jpeg'
     const validMime = mimeType.startsWith('image/') ? mimeType : 'image/jpeg'
 
+    // Fecha de hoy en Chile para incluirla en el prompt como referencia
+    const todayChile = new Date().toLocaleDateString('es-CL', {
+      timeZone: 'America/Santiago',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+
     const response = await groq.chat.completions.create({
       model: VISION_MODEL,
       messages: [
@@ -71,9 +108,11 @@ async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number): P
             {
               type: 'text',
               text: `Analiza este comprobante de transferencia bancaria chilena.
-Extrae el monto transferido, si es un comprobante válido y tu nivel de confianza.
+La fecha de hoy es ${todayChile}.
+Extrae el monto transferido, la fecha de la transacción y si es un comprobante válido.
+La fecha debe estar en formato DD-MM-YYYY o YYYY-MM-DD.
 Responde SOLO con JSON en este formato exacto (sin markdown):
-{"amount": <número o null>, "is_valid_receipt": <true/false>, "confidence": <0.0-1.0>}`,
+{"amount": <número o null>, "date": <"DD-MM-YYYY" o null>, "is_valid_receipt": <true/false>, "confidence": <0.0-1.0>}`,
             },
           ],
         },
@@ -84,17 +123,32 @@ Responde SOLO con JSON en este formato exacto (sin markdown):
     const text = response.choices[0].message.content?.trim() ?? ''
     const json = JSON.parse(text.replace(/```json?\n?/g, '').replace(/```/g, ''))
 
-    const verified =
+    // Validar monto
+    const amountOk =
       json.is_valid_receipt === true &&
       json.confidence >= 0.7 &&
       json.amount !== null &&
       Math.abs(json.amount - expectedAmount) < expectedAmount * 0.05 // ±5% tolerancia
 
+    // Validar fecha — debe ser hoy o ayer
+    const dateOk = isReceiptDateValid(json.date)
+
+    if (amountOk && !dateOk) {
+      return {
+        verified: false,
+        amount: json.amount,
+        dateIssue: true,
+        reason: `El comprobante tiene fecha ${json.date ?? 'no legible'}, pero debe ser de hoy (${todayChile}). Por favor envía una transferencia nueva.`,
+      }
+    }
+
+    const verified = amountOk && dateOk
+
     return {
       verified,
       amount: json.amount,
       reason: verified
-        ? `Comprobante válido: $${json.amount?.toLocaleString('es-CL')}`
+        ? `Comprobante válido: $${json.amount?.toLocaleString('es-CL')} del ${json.date}`
         : `No verificado: monto detectado $${json.amount?.toLocaleString('es-CL') ?? 'no legible'}, esperado $${expectedAmount.toLocaleString('es-CL')}`,
     }
   } catch (err) {
@@ -198,6 +252,13 @@ export async function POST(req: NextRequest) {
             `💰 Pago verificado\nCliente: ${appointment.client_name}\nServicio: ${service?.name}\n${result.reason}`
           )
         }
+      } else if (result.dateIssue) {
+        // Mensaje específico para comprobante con fecha incorrecta
+        await sendWhatsApp(
+          from,
+          `⚠️ *Comprobante rechazado*\n\n${result.reason}\n\n` +
+          `Si crees que es un error, contacta directamente a la barbería.`
+        )
       } else {
         await sendWhatsApp(
           from,
@@ -221,7 +282,7 @@ export async function POST(req: NextRequest) {
           from,
           barbershop_id: shop.id,
           barbershop_slug: shop.slug,
-          history: [], // WhatsApp no mantiene historial por ahora
+          history: [],
         }),
       })
 

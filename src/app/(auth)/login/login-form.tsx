@@ -12,6 +12,9 @@ export function LoginForm() {
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({ email: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
+  const [showReset, setShowReset] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetLoading, setResetLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,7 +26,6 @@ export function LoginForm() {
       })
       if (error) throw error
 
-      // Obtener rol para redirigir correctamente
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('role')
@@ -38,6 +40,57 @@ export function LoginForm() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!resetEmail.trim()) return
+    setResetLoading(true)
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+      if (error) throw error
+      toast.success('Te enviamos un email para restablecer tu contraseña.')
+      setShowReset(false)
+      setResetEmail('')
+    } catch (err: any) {
+      toast.error(err.message || 'Error al enviar el email')
+    } finally {
+      setResetLoading(false)
+    }
+  }
+
+  if (showReset) {
+    return (
+      <form onSubmit={handleReset} className="flex flex-col gap-4">
+        <div>
+          <p className="text-sm text-[rgb(var(--fg-secondary))] mb-4">
+            Ingresa tu email y te enviaremos un link para crear una nueva contraseña.
+          </p>
+          <label className="label">Email</label>
+          <input
+            type="email"
+            className="input"
+            placeholder="tu@email.com"
+            value={resetEmail}
+            onChange={e => setResetEmail(e.target.value)}
+            required
+            autoFocus
+          />
+        </div>
+        <button type="submit" disabled={resetLoading} className="btn-primary">
+          {resetLoading ? <Loader2 size={16} className="animate-spin" /> : 'Enviar link de recuperación'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowReset(false)}
+          className="text-sm text-center text-[rgb(var(--fg-secondary))] hover:text-[rgb(var(--fg))] transition-colors"
+        >
+          Volver al inicio de sesión
+        </button>
+      </form>
+    )
   }
 
   return (
@@ -73,6 +126,13 @@ export function LoginForm() {
             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
+        <button
+          type="button"
+          onClick={() => { setShowReset(true); setResetEmail(form.email) }}
+          className="text-xs text-[rgb(var(--fg-secondary))] hover:text-brand-red transition-colors mt-1.5 block"
+        >
+          ¿Olvidaste tu contraseña?
+        </button>
       </div>
       <button type="submit" disabled={loading} className="btn-primary mt-2">
         {loading ? <Loader2 size={16} className="animate-spin" /> : 'Iniciar sesión'}

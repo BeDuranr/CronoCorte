@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Moon, Sun, LogOut, Menu, X, Calendar, LayoutDashboard, Settings } from 'lucide-react'
+import { Moon, Sun, LogOut, Menu, X, Calendar, LayoutDashboard, Settings, Scissors, Users } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { CronoLogo } from '@/components/crono-logo'
 import type { UserRole } from '@/types/database'
@@ -39,8 +39,8 @@ export function Navbar({ role, barbershopName }: NavbarProps) {
 
   const adminLinks = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/dashboard/servicios', label: 'Servicios', icon: Calendar },
-    { href: '/dashboard/barberos', label: 'Barberos', icon: Calendar },
+    { href: '/dashboard/servicios', label: 'Servicios', icon: Scissors },
+    { href: '/dashboard/barberos', label: 'Barberos', icon: Users },
     { href: '/dashboard/configuracion', label: 'Configuración', icon: Settings },
   ]
   const workerLinks = [

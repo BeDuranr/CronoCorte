@@ -23,7 +23,19 @@ export function RegisterForm() {
     e.preventDefault()
     setLoading(true)
     try {
-      // 1. Crear usuario en Supabase Auth
+      // 1. Verificar si el slug ya existe antes de crear el usuario
+      const slug = toSlug(form.barbershopName)
+      const { data: existing } = await supabase
+        .from('barbershops')
+        .select('id')
+        .eq('slug', slug)
+        .single()
+
+      if (existing) {
+        throw new Error(`Ya existe una barbería registrada con el nombre "${form.barbershopName}". Prueba con un nombre diferente.`)
+      }
+
+      // 2. Crear usuario en Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
@@ -31,11 +43,16 @@ export function RegisterForm() {
           data: { full_name: form.fullName, role: 'admin' }
         },
       })
-      if (authError) throw authError
+      if (authError) {
+        // Error de email ya registrado
+        if (authError.message.toLowerCase().includes('already registered')) {
+          throw new Error('Ya existe una cuenta con ese email. Intenta iniciar sesión.')
+        }
+        throw authError
+      }
       if (!authData.user) throw new Error('No se pudo crear el usuario')
 
-      // 2. Crear la barbería
-      const slug = toSlug(form.barbershopName)
+      // 3. Crear la barbería
       const { error: shopError } = await supabase
         .from('barbershops')
         .insert({
@@ -43,7 +60,14 @@ export function RegisterForm() {
           name: form.barbershopName,
           slug,
         })
-      if (shopError) throw shopError
+
+      if (shopError) {
+        // Por si acaso hay una condición de carrera con el slug
+        if (shopError.code === '23505') {
+          throw new Error(`Ya existe una barbería registrada con el nombre "${form.barbershopName}". Prueba con un nombre diferente.`)
+        }
+        throw shopError
+      }
 
       toast.success('¡Cuenta creada! Completa el perfil de tu barbería.')
       router.push('/onboarding')

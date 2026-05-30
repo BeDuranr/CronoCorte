@@ -1,11 +1,12 @@
 -- ═══════════════════════════════════════════════════════════
 -- CRONO CORTE — Schema completo de base de datos
+-- Versión sincronizada con el código real (Mayo 2026)
 -- Ejecutar en: Supabase Dashboard → SQL Editor
 -- ═══════════════════════════════════════════════════════════
 
 -- Extensiones necesarias
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pg_cron";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ──────────────────────────────────────────────────────────
 -- ENUM tipos
@@ -35,15 +36,15 @@ CREATE TABLE barbershops (
   name                VARCHAR(120) NOT NULL,
   slug                VARCHAR(80) UNIQUE NOT NULL,
   address             TEXT,
-  phone               VARCHAR(20),
+  phone               VARCHAR(30),
   logo_url            TEXT,
   description         TEXT,
-  -- Horario general: {"mon":{"open":"09:00","close":"20:00","active":true}, ...}
-  schedule_config     JSONB DEFAULT '{}',
+  instagram           VARCHAR(80),                        -- handle sin @
+  transfer_info       TEXT,                               -- texto libre con datos de transferencia
   -- Pago por WhatsApp
   payment_required    BOOLEAN DEFAULT FALSE,
-  payment_info        JSONB DEFAULT '{}', -- {banco, cuenta, titular, tipo}
   -- Configuración del agente de IA
+  agent_enabled       BOOLEAN DEFAULT FALSE,
   agent_name          VARCHAR(60) DEFAULT 'Asistente',
   agent_tone          agent_tone DEFAULT 'relajado',
   agent_prompt_custom TEXT DEFAULT '',
@@ -59,8 +60,8 @@ CREATE TABLE workers (
   user_id        UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   name           VARCHAR(120) NOT NULL,
   photo_url      TEXT,
-  phone          VARCHAR(20),         -- WhatsApp para notificaciones
-  specialties    TEXT[] DEFAULT '{}',
+  phone          VARCHAR(30),                             -- WhatsApp para notificaciones
+  specialty      VARCHAR(120),                            -- texto libre (ej: "Degradados, Barba")
   calendar_token UUID UNIQUE DEFAULT uuid_generate_v4(),
   is_active      BOOLEAN DEFAULT TRUE,
   created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -70,30 +71,32 @@ CREATE TABLE workers (
 -- services
 -- ──────────────────────────────────────────────────────────
 CREATE TABLE services (
-  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  barbershop_id UUID NOT NULL REFERENCES barbershops(id) ON DELETE CASCADE,
-  name          VARCHAR(120) NOT NULL,
-  description   TEXT,
-  price         NUMERIC(10,2) NOT NULL DEFAULT 0,
-  duration_min  INTEGER NOT NULL DEFAULT 30,
-  is_active     BOOLEAN DEFAULT TRUE
+  id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  barbershop_id    UUID NOT NULL REFERENCES barbershops(id) ON DELETE CASCADE,
+  name             VARCHAR(120) NOT NULL,
+  description      TEXT,
+  price            NUMERIC(10,2) NOT NULL DEFAULT 0,
+  duration_minutes INTEGER NOT NULL DEFAULT 60,           -- siempre en bloques de 60 min
+  sort_order       INTEGER DEFAULT 0,
+  is_active        BOOLEAN DEFAULT TRUE
 );
 
 -- ──────────────────────────────────────────────────────────
--- availability — disponibilidad semanal por barbero
+-- availability — disponibilidad semanal por barbería
+-- Nota: es por barbershop_id, no por worker_id
 -- ──────────────────────────────────────────────────────────
 CREATE TABLE availability (
-  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  worker_id    UUID NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
-  day_of_week  SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
-  start_time   TIME NOT NULL,
-  end_time     TIME NOT NULL,
-  is_available BOOLEAN DEFAULT TRUE,
-  UNIQUE (worker_id, day_of_week)
+  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  barbershop_id  UUID NOT NULL REFERENCES barbershops(id) ON DELETE CASCADE,
+  day_of_week    SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+  start_time     TIME NOT NULL,
+  end_time       TIME NOT NULL,
+  is_active      BOOLEAN DEFAULT TRUE,
+  UNIQUE (barbershop_id, day_of_week)
 );
 
 -- ──────────────────────────────────────────────────────────
--- blocked_slots — ausencias o bloqueos específicos
+-- blocked_slots — ausencias o bloqueos específicos por barbero
 -- ──────────────────────────────────────────────────────────
 CREATE TABLE blocked_slots (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -127,14 +130,16 @@ CREATE TABLE appointments (
   service_id            UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
   -- Cliente (sin registro)
   client_name           VARCHAR(120) NOT NULL,
-  client_phone          VARCHAR(20) NOT NULL,
+  client_phone          VARCHAR(30) NOT NULL,
+  -- Notas (servicios adicionales o comentarios del cliente)
+  notes                 TEXT,
   -- IA
   recommended_style     VARCHAR(120),
   -- Tiempo
   starts_at             TIMESTAMP WITH TIME ZONE NOT NULL,
   ends_at               TIMESTAMP WITH TIME ZONE NOT NULL,
   -- Estado
-  status                appointment_status DEFAULT 'confirmed',
+  status                appointment_status DEFAULT 'pending_payment',
   -- Cancelación sin login
   cancel_token          VARCHAR(64) UNIQUE DEFAULT encode(gen_random_bytes(32), 'hex'),
   -- Pago
@@ -150,13 +155,15 @@ CREATE TABLE appointments (
 -- ──────────────────────────────────────────────────────────
 -- ÍNDICES — rendimiento en queries frecuentes
 -- ──────────────────────────────────────────────────────────
-CREATE INDEX idx_appointments_worker_starts ON appointments(worker_id, starts_at);
-CREATE INDEX idx_appointments_barbershop ON appointments(barbershop_id, starts_at);
-CREATE INDEX idx_appointments_reminders ON appointments(starts_at, status)
+CREATE INDEX idx_appointments_worker_starts   ON appointments(worker_id, starts_at);
+CREATE INDEX idx_appointments_barbershop      ON appointments(barbershop_id, starts_at);
+CREATE INDEX idx_appointments_client_phone    ON appointments(client_phone, status);
+CREATE INDEX idx_appointments_status          ON appointments(status, starts_at);
+CREATE INDEX idx_appointments_reminders       ON appointments(starts_at, status)
   WHERE reminder_24h_sent = FALSE OR reminder_1h_sent = FALSE;
-CREATE INDEX idx_availability_worker ON availability(worker_id);
-CREATE INDEX idx_workers_barbershop ON workers(barbershop_id);
-CREATE INDEX idx_services_barbershop ON services(barbershop_id);
+CREATE INDEX idx_availability_barbershop      ON availability(barbershop_id);
+CREATE INDEX idx_workers_barbershop           ON workers(barbershop_id);
+CREATE INDEX idx_services_barbershop          ON services(barbershop_id, is_active);
 
 -- ──────────────────────────────────────────────────────────
 -- FUNCIÓN: crear perfil automáticamente al registrar usuario
@@ -190,33 +197,27 @@ ALTER TABLE appointments      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portfolio_photos  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles     ENABLE ROW LEVEL SECURITY;
 
--- user_profiles: cada usuario solo ve/edita el suyo
+-- user_profiles
 CREATE POLICY "own profile" ON user_profiles
   FOR ALL USING (auth.uid() = id);
 
--- barbershops: el admin ve y edita solo la suya
+-- barbershops: admin gestiona la suya, lectura pública para la página de reserva
 CREATE POLICY "admin owns barbershop" ON barbershops
   FOR ALL USING (admin_id = auth.uid());
-
--- Lectura pública de barbershops por slug (para la página pública)
-CREATE POLICY "public read barbershop by slug" ON barbershops
+CREATE POLICY "public read barbershop" ON barbershops
   FOR SELECT USING (TRUE);
 
--- workers: el admin de la barbería los gestiona
+-- workers: admin gestiona, worker se ve a sí mismo, público lee activos
 CREATE POLICY "admin manages workers" ON workers
   FOR ALL USING (
     barbershop_id IN (SELECT id FROM barbershops WHERE admin_id = auth.uid())
   );
-
--- Worker ve su propio registro
 CREATE POLICY "worker sees own record" ON workers
   FOR SELECT USING (user_id = auth.uid());
-
--- Lectura pública de workers activos (para página de reserva)
 CREATE POLICY "public read active workers" ON workers
   FOR SELECT USING (is_active = TRUE);
 
--- services: admin gestiona, público lee
+-- services: admin gestiona, público lee activos
 CREATE POLICY "admin manages services" ON services
   FOR ALL USING (
     barbershop_id IN (SELECT id FROM barbershops WHERE admin_id = auth.uid())
@@ -224,8 +225,16 @@ CREATE POLICY "admin manages services" ON services
 CREATE POLICY "public read active services" ON services
   FOR SELECT USING (is_active = TRUE);
 
--- availability: admin y worker gestionan
+-- availability: admin gestiona, público lee
 CREATE POLICY "admin manages availability" ON availability
+  FOR ALL USING (
+    barbershop_id IN (SELECT id FROM barbershops WHERE admin_id = auth.uid())
+  );
+CREATE POLICY "public read availability" ON availability
+  FOR SELECT USING (TRUE);
+
+-- blocked_slots: admin y worker gestionan
+CREATE POLICY "admin manages blocked slots" ON blocked_slots
   FOR ALL USING (
     worker_id IN (
       SELECT id FROM workers WHERE barbershop_id IN (
@@ -233,12 +242,10 @@ CREATE POLICY "admin manages availability" ON availability
       )
     )
   );
-CREATE POLICY "worker manages own availability" ON availability
+CREATE POLICY "worker manages own blocked slots" ON blocked_slots
   FOR ALL USING (
     worker_id IN (SELECT id FROM workers WHERE user_id = auth.uid())
   );
-CREATE POLICY "public read availability" ON availability
-  FOR SELECT USING (TRUE);
 
 -- appointments: admin ve todas las de su barbería, worker ve las suyas
 CREATE POLICY "admin sees all appointments" ON appointments
@@ -249,10 +256,14 @@ CREATE POLICY "worker sees own appointments" ON appointments
   FOR SELECT USING (
     worker_id IN (SELECT id FROM workers WHERE user_id = auth.uid())
   );
--- Inserción pública (clientes sin login pueden crear citas)
+CREATE POLICY "worker updates own appointments" ON appointments
+  FOR UPDATE USING (
+    worker_id IN (SELECT id FROM workers WHERE user_id = auth.uid())
+  );
+-- Inserción pública — clientes sin login crean citas
 CREATE POLICY "public insert appointment" ON appointments
   FOR INSERT WITH CHECK (TRUE);
--- Cancelación por token (UPDATE público)
+-- Cancelación por token — UPDATE público validado por cancel_token
 CREATE POLICY "cancel by token" ON appointments
   FOR UPDATE USING (cancel_token = current_setting('app.cancel_token', TRUE));
 
