@@ -184,13 +184,19 @@ function StepDateTime({
         return
       }
 
-      // Get existing bookings for this worker on this date
+      // Rango ampliado +/-1 dia: las citas se guardan en UTC, y una cita en hora
+      // Chile (UTC-4/-3) puede caer en el dia UTC anterior o siguiente. La
+      // comparacion precisa la hace calculateAvailableSlots con parseISO.
+      const prevStr = format(addDays(date, -1), 'yyyy-MM-dd')
+      const nextStr = format(addDays(date, 1), 'yyyy-MM-dd')
+
+      // Get existing bookings for this worker around this date
       const { data: existing } = await supabase
         .from('appointments')
         .select('starts_at, ends_at')
         .eq('worker_id', workerId)
-        .gte('starts_at', `${dateStr}T00:00:00`)
-        .lte('starts_at', `${dateStr}T23:59:59`)
+        .gte('starts_at', `${prevStr}T00:00:00`)
+        .lte('starts_at', `${nextStr}T23:59:59`)
         .not('status', 'eq', 'cancelled')
 
       const available = calculateAvailableSlots({

@@ -22,11 +22,29 @@ async function sendWhatsApp(to: string, body: string) {
     }),
   })
 
+  const data = await res.json()
+
+  // Log detallado para diagnostico
+  console.log('Twilio response:', JSON.stringify({
+    httpStatus: res.status,
+    sid: data.sid,
+    status: data.status,
+    errorCode: data.error_code,
+    errorMessage: data.error_message,
+    to: data.to,
+    from: data.from,
+  }))
+
   if (!res.ok) {
-    const err = await res.json()
-    throw new Error(`Twilio error: ${err.message}`)
+    throw new Error(`Twilio error ${res.status}: ${data.message || data.error_message}`)
   }
-  return res.json()
+
+  // Twilio puede devolver 201 con error_code si el mensaje no se pudo entregar
+  if (data.error_code) {
+    throw new Error(`Twilio error_code ${data.error_code}: ${data.error_message}`)
+  }
+
+  return data
 }
 
 export async function POST(req: NextRequest) {
