@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
 import {
   ChevronLeft, ChevronRight, Clock, Check, Loader2,
-  Instagram, MapPin, Scissors, Phone, Users, User
+  Instagram, MapPin, Scissors, Phone
 } from 'lucide-react'
 
 interface Barbershop {
@@ -44,72 +44,21 @@ interface Props {
   availability: { day_of_week: number; start_time: string; end_time: string }[]
 }
 
-// Una persona dentro de la reserva: sus servicios y el horario elegido.
-interface Person {
-  services: Service[]
-  time: string | null // "HH:mm"
-}
-
-// ─── Step 0: ¿Cuántas personas? ───────────────────────────────────────────────
-function StepPeopleCount({
-  count,
-  onSelect,
-}: {
-  count: number
-  onSelect: (n: number) => void
-}) {
-  const options = [1, 2, 3, 4]
-  return (
-    <div>
-      <p className="text-sm text-[rgb(var(--fg-secondary))] mb-4">
-        ¿Para cuántas personas quieres reservar? Puedes agendar para ti y tus acompañantes en una sola reserva.
-      </p>
-      <div className="grid grid-cols-2 gap-3">
-        {options.map(n => (
-          <button
-            key={n}
-            onClick={() => onSelect(n)}
-            className={`card p-5 flex flex-col items-center gap-2 transition-all hover:border-brand-red/40 ${
-              count === n ? 'border-brand-red bg-brand-red/5' : ''
-            }`}
-          >
-            {n === 1 ? (
-              <User size={24} className="text-brand-red" />
-            ) : (
-              <Users size={24} className="text-brand-red" />
-            )}
-            <span className="font-bold text-[rgb(var(--fg))]">
-              {n} {n === 1 ? 'persona' : 'personas'}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ─── Step: selección de servicios (para una persona dada) ─────────────────────
+// ─── Step 1: Service selection (multi) ────────────────────────────────────────
 function StepService({
   services,
   selected,
   onToggle,
-  personLabel,
 }: {
   services: Service[]
   selected: Service[]
   onToggle: (s: Service) => void
-  personLabel?: string
 }) {
   const total = selected.reduce((sum, s) => sum + s.price, 0)
   const totalDuration = selected.reduce((sum, s) => sum + s.duration_minutes, 0)
 
   return (
     <div className="flex flex-col gap-3">
-      {personLabel && (
-        <p className="text-sm font-semibold text-brand-red flex items-center gap-1.5">
-          <User size={14} /> {personLabel}
-        </p>
-      )}
       {services.map(svc => {
         const isSelected = selected.some(s => s.id === svc.id)
         return (
@@ -152,7 +101,7 @@ function StepService({
   )
 }
 
-// ─── Step: selección de barbero ───────────────────────────────────────────────
+// ─── Step 2: Worker selection ─────────────────────────────────────────────────
 function StepWorker({
   workers,
   selected,
@@ -192,32 +141,30 @@ function StepWorker({
   )
 }
 
-// ─── Step: fecha y selección de horarios (1 o varios) ─────────────────────────
-// Para reservas grupales, el cliente elige tantos horarios como personas haya.
+// ─── Step 3: Date & time picker ───────────────────────────────────────────────
 function StepDateTime({
   selectedDate,
-  selectedTimes,
+  selectedTime,
   onDateChange,
-  onToggleTime,
+  onTimeSelect,
   availability,
+  barbershopId,
   workerId,
   serviceDuration,
-  peopleCount,
 }: {
   selectedDate: Date
-  selectedTimes: string[]
+  selectedTime: string | null
   onDateChange: (d: Date) => void
-  onToggleTime: (t: string) => void
+  onTimeSelect: (t: string) => void
   availability: Props['availability']
+  barbershopId: string
   workerId: string
   serviceDuration: number
-  peopleCount: number
 }) {
   const supabase = createClient()
   const [slots, setSlots] = useState<string[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [weekOffset, setWeekOffset] = useState(0)
-  const [loadedDay, setLoadedDay] = useState<string | null>(null)
 
   const today = startOfDay(new Date())
   const visibleDays = Array.from({ length: 14 }, (_, i) => addDays(today, i + weekOffset * 14))
@@ -234,7 +181,6 @@ function StepDateTime({
       const avail = availability.find(a => a.day_of_week === dow)
       if (!avail) {
         setSlots([])
-        setLoadedDay(dateStr)
         return
       }
 
@@ -244,6 +190,7 @@ function StepDateTime({
       const prevStr = format(addDays(date, -1), 'yyyy-MM-dd')
       const nextStr = format(addDays(date, 1), 'yyyy-MM-dd')
 
+      // Get existing bookings for this worker around this date
       const { data: existing } = await supabase
         .from('appointments')
         .select('starts_at, ends_at')
@@ -263,14 +210,10 @@ function StepDateTime({
       })
 
       setSlots(available)
-      setLoadedDay(dateStr)
     } finally {
       setLoadingSlots(false)
     }
   }
-
-  const isMulti = peopleCount > 1
-  const remaining = peopleCount - selectedTimes.length
 
   return (
     <div>
@@ -278,7 +221,7 @@ function StepDateTime({
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
           <button
-            onClick={() => setWeekOffset(o => Math.max(0, o - 1))}
+            onClick={() => { setWeekOffset(o => o - 1); if (weekOffset > 0) {} }}
             disabled={weekOffset === 0}
             className="p-1 rounded hover:bg-[rgb(var(--bg-secondary))] disabled:opacity-30 transition-all"
           >
@@ -326,15 +269,6 @@ function StepDateTime({
         </div>
       </div>
 
-      {/* Aviso multi-persona */}
-      {isMulti && (
-        <div className="rounded-lg border border-brand-red/20 bg-brand-red/5 px-3 py-2 mb-3 text-xs text-[rgb(var(--fg-secondary))]">
-          {remaining > 0
-            ? `Selecciona ${remaining} horario${remaining > 1 ? 's' : ''} más (uno por persona, ${peopleCount} en total).`
-            : `Listo: ${peopleCount} horarios seleccionados.`}
-        </div>
-      )}
-
       {/* Time slots */}
       {loadingSlots ? (
         <div className="text-center py-6">
@@ -346,83 +280,69 @@ function StepDateTime({
             Horarios disponibles — {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
           </p>
           <div className="grid grid-cols-4 gap-2">
-            {slots.map(slot => {
-              const isPicked = selectedTimes.includes(slot)
-              const atCapacity = !isPicked && selectedTimes.length >= peopleCount
-              return (
-                <button
-                  key={slot}
-                  onClick={() => onToggleTime(slot)}
-                  disabled={atCapacity}
-                  className={`py-2 px-1 rounded-lg text-sm font-medium border transition-all ${
-                    isPicked
-                      ? 'bg-brand-red text-white border-brand-red'
-                      : atCapacity
-                      ? 'border-[rgb(var(--fg-secondary))]/10 text-[rgb(var(--fg-secondary))]/30 cursor-not-allowed'
-                      : 'border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg))] hover:border-brand-red hover:text-brand-red'
-                  }`}
-                >
-                  {slot}
-                </button>
-              )
-            })}
+            {slots.map(slot => (
+              <button
+                key={slot}
+                onClick={() => onTimeSelect(slot)}
+                className={`py-2 px-1 rounded-lg text-sm font-medium border transition-all ${
+                  selectedTime === slot
+                    ? 'bg-brand-red text-white border-brand-red'
+                    : 'border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg))] hover:border-brand-red hover:text-brand-red'
+                }`}
+              >
+                {slot}
+              </button>
+            ))}
           </div>
         </>
-      ) : loadedDay ? (
-        <div className="text-center py-6 text-[rgb(var(--fg-secondary))] text-sm">
-          No hay horarios disponibles ese día. Prueba con otro.
-        </div>
-      ) : (
+      ) : slots.length === 0 && !loadingSlots ? (
         <div className="text-center py-6 text-[rgb(var(--fg-secondary))] text-sm">
           Selecciona un día disponible para ver horarios
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
 
-// ─── Step final: confirmar y crear la reserva ─────────────────────────────────
+// ─── Step 4: Confirm ──────────────────────────────────────────────────────────
 function StepConfirm({
-  barbershop,
-  people,
+  barbershopId,
+  services,
   worker,
   date,
-  times,
+  time,
   onSuccess,
 }: {
-  barbershop: Barbershop
-  people: Person[]
+  barbershopId: string
+  services: Service[]
   worker: Worker
   date: Date
-  times: string[]
+  time: string
   onSuccess: (appointmentId: string, cancelToken: string) => void
 }) {
+  const supabase = createClient()
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({ name: '', phone: '', notes: '' })
 
-  // Total de todas las personas
-  const grandTotal = people.reduce(
-    (sum, p) => sum + p.services.reduce((s, svc) => s + svc.price, 0),
-    0
-  )
+  const totalDuration = services.reduce((sum, s) => sum + s.duration_minutes, 0)
+  const totalPrice = services.reduce((sum, s) => sum + s.price, 0)
+  const primaryService = services[0]
 
-  // Construir un timestamp con offset de Chile a partir de la fecha + hora "HH:mm"
-  const buildTimestamps = (time: string, durationMin: number) => {
-    const dateStr = format(date, 'yyyy-MM-dd')
-    const localStart = new Date(`${dateStr}T${time}:00`)
-    const offsetMinutes = localStart.getTimezoneOffset()
-    const offsetSign = offsetMinutes <= 0 ? '+' : '-'
-    const offsetAbs = Math.abs(offsetMinutes)
-    const offsetHH = String(Math.floor(offsetAbs / 60)).padStart(2, '0')
-    const offsetMM = String(offsetAbs % 60).padStart(2, '0')
-    const tz = `${offsetSign}${offsetHH}:${offsetMM}`
-    const startsAt = `${dateStr}T${time}:00${tz}`
-    const endLocal = new Date(localStart.getTime() + durationMin * 60_000)
-    const endHH = String(endLocal.getHours()).padStart(2, '0')
-    const endMM = String(endLocal.getMinutes()).padStart(2, '0')
-    const endsAt = `${dateStr}T${endHH}:${endMM}:00${tz}`
-    return { startsAt, endsAt }
-  }
+  // Construir timestamps preservando la hora local del cliente (zona Chile)
+  // getTimezoneOffset() retorna minutos de diferencia con UTC (ej: 240 para UTC-4)
+  const dateStr = format(date, 'yyyy-MM-dd')
+  const localStart = new Date(`${dateStr}T${time}:00`)
+  const offsetMinutes = localStart.getTimezoneOffset()
+  const offsetSign = offsetMinutes <= 0 ? '+' : '-'
+  const offsetAbs = Math.abs(offsetMinutes)
+  const offsetHH = String(Math.floor(offsetAbs / 60)).padStart(2, '0')
+  const offsetMM = String(offsetAbs % 60).padStart(2, '0')
+  const tzOffset = `${offsetSign}${offsetHH}:${offsetMM}`
+  const startsAt = `${dateStr}T${time}:00${tzOffset}`
+  const endLocal = new Date(localStart.getTime() + totalDuration * 60_000)
+  const endHH = String(endLocal.getHours()).padStart(2, '0')
+  const endMM = String(endLocal.getMinutes()).padStart(2, '0')
+  const endsAt = `${dateStr}T${endHH}:${endMM}:00${tzOffset}`
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -433,49 +353,38 @@ function StepConfirm({
     setLoading(true)
     const cancelToken = crypto.randomUUID().replace(/-/g, '')
     try {
-      // Emparejar cada persona con un horario (orden ascendente por hora)
-      const sortedTimes = [...times].sort()
-
-      const blocks = people.map((person, idx) => {
-        const duration = person.services.reduce((s, svc) => s + svc.duration_minutes, 0) || 60
-        const { startsAt, endsAt } = buildTimestamps(sortedTimes[idx], duration)
-        const primary = person.services[0]
-        const extra = person.services.slice(1).map(s => s.name).join(', ')
-        const noteParts = [
-          extra ? `Servicios adicionales: ${extra}` : '',
-          idx === 0 && form.notes.trim() ? form.notes.trim() : '',
-        ].filter(Boolean)
-        return {
-          service_id: primary.id,
-          starts_at: startsAt,
-          ends_at: endsAt,
-          notes: noteParts.length ? noteParts.join('\n') : null,
-        }
-      })
+      // Si hay más de un servicio, concatenar nombres en las notas
+      const extraServices = services.slice(1).map(s => s.name).join(', ')
+      const combinedNotes = [
+        extraServices ? `Servicios adicionales: ${extraServices}` : '',
+        form.notes.trim(),
+      ].filter(Boolean).join('\n') || null
 
       const res = await fetch('/api/appointments/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          barbershop_id: barbershop.id,
+          barbershop_id: barbershopId,
           worker_id: worker.id,
+          service_id: primaryService.id,
           client_name: form.name.trim(),
           client_phone: form.phone.trim().startsWith('+') ? form.phone.trim() : `+56${form.phone.trim()}`,
+          notes: combinedNotes,
+          starts_at: startsAt,
+          ends_at: endsAt,
           cancel_token: cancelToken,
-          blocks,
-          total_amount: grandTotal,
         }),
       })
 
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Error al reservar')
 
-      // Notificación WhatsApp (no bloquea el flujo si Twilio falla)
+      // Enviar notificación WhatsApp al cliente
       fetch('/api/whatsapp/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appointment_id: data.id }),
-      }).catch(() => {})
+      }).catch(() => {}) // No bloquear si falla (Twilio puede no estar configurado en dev)
 
       onSuccess(data.id, cancelToken)
     } catch (err: any) {
@@ -485,42 +394,26 @@ function StepConfirm({
     }
   }
 
-  const sortedTimes = [...times].sort()
-  const isMulti = people.length > 1
-
   return (
     <div>
-      {/* Resumen */}
-      <div className="card p-4 mb-5 flex flex-col gap-3">
+      {/* Summary */}
+      <div className="card p-4 mb-5 flex flex-col gap-2">
         <h3 className="font-semibold text-sm text-[rgb(var(--fg-secondary))] uppercase tracking-wide">
           Resumen de tu reserva
         </h3>
-
-        {people.map((person, idx) => {
-          const personTotal = person.services.reduce((s, svc) => s + svc.price, 0)
-          return (
-            <div key={idx} className="flex flex-col gap-1 pb-2 border-b border-[rgb(var(--fg-secondary))]/10 last:border-0 last:pb-0">
-              {isMulti && (
-                <p className="text-xs font-semibold text-brand-red flex items-center gap-1">
-                  <User size={11} /> {idx === 0 ? 'Tú' : `Acompañante ${idx}`} · {sortedTimes[idx]}
-                </p>
-              )}
-              {person.services.map(svc => (
-                <div key={svc.id} className="flex items-center gap-2">
-                  <Scissors size={13} className="text-brand-red shrink-0" />
-                  <span className="text-sm text-[rgb(var(--fg))]">{svc.name}</span>
-                  <span className="ml-auto text-sm font-medium text-[rgb(var(--fg))]">{formatPrice(svc.price)}</span>
-                </div>
-              ))}
-              {isMulti && (
-                <span className="text-xs text-[rgb(var(--fg-secondary))] text-right">
-                  Subtotal: {formatPrice(personTotal)}
-                </span>
-              )}
-            </div>
-          )
-        })}
-
+        {services.map(svc => (
+          <div key={svc.id} className="flex items-center gap-2">
+            <Scissors size={14} className="text-brand-red shrink-0" />
+            <span className="text-sm font-medium text-[rgb(var(--fg))]">{svc.name}</span>
+            <span className="ml-auto text-sm font-bold text-[rgb(var(--fg))]">{formatPrice(svc.price)}</span>
+          </div>
+        ))}
+        {services.length > 1 && (
+          <div className="flex justify-between text-xs text-[rgb(var(--fg-secondary))] border-t border-[rgb(var(--fg-secondary))]/10 pt-2 mt-1">
+            <span>Total · {totalDuration} min</span>
+            <span className="font-bold text-brand-red">{formatPrice(totalPrice)}</span>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <div className="w-3.5 h-3.5 rounded-full bg-brand-red/10 text-brand-red flex items-center justify-center text-[8px] font-bold">
             {worker.name.charAt(0)}
@@ -530,16 +423,8 @@ function StepConfirm({
         <div className="flex items-center gap-2">
           <Clock size={14} className="text-brand-red" />
           <span className="text-sm text-[rgb(var(--fg))]">
-            {format(date, "EEE d 'de' MMMM", { locale: es })}
-            {!isMulti && ` · ${sortedTimes[0]}`}
+            {format(date, "EEE d 'de' MMMM", { locale: es })} · {time} ({totalDuration} min)
           </span>
-        </div>
-
-        <div className="flex justify-between border-t border-[rgb(var(--fg-secondary))]/10 pt-2">
-          <span className="text-sm text-[rgb(var(--fg-secondary))]">
-            Total {isMulti ? `(${people.length} personas)` : ''}
-          </span>
-          <span className="font-bold text-brand-red">{formatPrice(grandTotal)}</span>
         </div>
       </div>
 
@@ -591,37 +476,28 @@ function StepConfirm({
   )
 }
 
-// ─── Pantalla de éxito ────────────────────────────────────────────────────────
-function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }: any) {
+// ─── Success screen ───────────────────────────────────────────────────────────
+function BookingSuccess({ services, worker, date, time, barbershop, cancelToken }: any) {
   const dateLabel = format(date, "EEEE d 'de' MMMM", { locale: es })
-  const grandTotal = people.reduce(
-    (sum: number, p: Person) => sum + p.services.reduce((s, svc) => s + svc.price, 0),
-    0
-  )
-  const sortedTimes = [...times].sort()
-  const isMulti = people.length > 1
+  const totalPrice = services.reduce((sum: number, s: any) => sum + s.price, 0)
+  const serviceNames = services.map((s: any) => s.name).join(' + ')
 
+  // Calcular hora límite de pago (30 min desde ahora)
   const paymentDeadline = new Date(Date.now() + 30 * 60 * 1000)
   const deadlineStr = paymentDeadline.toLocaleTimeString('es-CL', {
     hour: '2-digit',
     minute: '2-digit',
   })
 
-  // Detalle de servicios para el mensaje de WhatsApp
-  const detailLines = people.map((p: Person, idx: number) => {
-    const names = p.services.map(s => s.name).join(' + ')
-    const who = isMulti ? (idx === 0 ? 'Tú' : `Acompañante ${idx}`) : ''
-    return `- ${who ? who + ': ' : ''}${names} (${sortedTimes[idx]})`
-  })
-
+  // Build pre-filled WhatsApp message
   const waMessage = [
-    `Hola! Reservé en ${barbershop.name}.`,
+    `Hola! Reservé una hora en ${barbershop.name}.`,
     ``,
     `*Detalle:*`,
-    ...detailLines,
+    `- Servicio: ${serviceNames}`,
     `- Barbero: ${worker.name}`,
-    `- Fecha: ${dateLabel}`,
-    `- Total: ${formatPrice(grandTotal)}`,
+    `- Fecha: ${dateLabel} a las ${time}`,
+    `- Precio: ${formatPrice(totalPrice)}`,
     ``,
     barbershop.transfer_info
       ? `*Datos de transferencia:*\n${barbershop.transfer_info}\n`
@@ -640,50 +516,50 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
         </div>
         <h2 className="text-2xl font-bold text-[rgb(var(--fg))] mb-2">¡Hora agendada!</h2>
         <p className="text-[rgb(var(--fg-secondary))] text-sm">
-          Para confirmar {isMulti ? 'las horas' : 'tu hora'}, envía el comprobante de transferencia por WhatsApp.
+          Para confirmar tu hora, envía el comprobante de transferencia por WhatsApp.
         </p>
       </div>
 
+      {/* Aviso plazo de pago */}
       <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 mb-4 flex items-start gap-3">
         <span className="text-yellow-500 text-lg leading-none mt-0.5">⏳</span>
         <div>
           <p className="text-sm font-semibold text-yellow-500">Tienes 30 minutos para pagar</p>
           <p className="text-xs text-[rgb(var(--fg-secondary))] mt-0.5">
             Si no recibimos el comprobante antes de las{' '}
-            <strong className="text-[rgb(var(--fg))]">{deadlineStr}</strong>,{' '}
-            {isMulti ? 'las horas serán liberadas' : 'tu hora será liberada'} automáticamente.
+            <strong className="text-[rgb(var(--fg))]">{deadlineStr}</strong>, tu hora será
+            liberada automáticamente.
           </p>
         </div>
       </div>
 
+      {/* Resumen */}
       <div className="card p-4 mb-4">
         <div className="flex flex-col gap-2 text-sm">
-          {people.map((p: Person, idx: number) => {
-            const personTotal = p.services.reduce((s, svc) => s + svc.price, 0)
-            return (
-              <div key={idx} className="flex justify-between">
-                <span className="text-[rgb(var(--fg-secondary))]">
-                  {isMulti ? `${idx === 0 ? 'Tú' : `Acompañante ${idx}`} · ${sortedTimes[idx]}` : p.services.map(s => s.name).join(' + ')}
-                </span>
-                <span className="font-medium text-[rgb(var(--fg))]">{formatPrice(personTotal)}</span>
-              </div>
-            )
-          })}
+          {services.map((svc: any) => (
+            <div key={svc.id} className="flex justify-between">
+              <span className="text-[rgb(var(--fg-secondary))]">{svc.name}</span>
+              <span className="font-medium text-[rgb(var(--fg))]">{formatPrice(svc.price)}</span>
+            </div>
+          ))}
           <div className="flex justify-between">
             <span className="text-[rgb(var(--fg-secondary))]">Barbero</span>
             <span className="font-medium text-[rgb(var(--fg))]">{worker.name}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[rgb(var(--fg-secondary))]">Fecha</span>
-            <span className="font-medium text-[rgb(var(--fg))]">{format(date, "d MMM", { locale: es })}</span>
+            <span className="text-[rgb(var(--fg-secondary))]">Fecha y hora</span>
+            <span className="font-medium text-[rgb(var(--fg))]">
+              {format(date, "d MMM", { locale: es })} · {time}
+            </span>
           </div>
           <div className="flex justify-between border-t border-[rgb(var(--fg-secondary))]/10 pt-2 mt-1">
             <span className="text-[rgb(var(--fg-secondary))]">Total a transferir</span>
-            <span className="font-bold text-brand-red text-base">{formatPrice(grandTotal)}</span>
+            <span className="font-bold text-brand-red text-base">{formatPrice(totalPrice)}</span>
           </div>
         </div>
       </div>
 
+      {/* Datos de transferencia */}
       {barbershop.transfer_info && (
         <div className="card p-4 mb-4 border-brand-red/20">
           <p className="text-xs font-semibold text-[rgb(var(--fg-secondary))] uppercase tracking-wide mb-2">
@@ -695,6 +571,7 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
         </div>
       )}
 
+      {/* CTA WhatsApp */}
       {phoneClean ? (
         <a
           href={waUrl}
@@ -723,8 +600,11 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
       {cancelToken && (
         <p className="text-center text-xs text-[rgb(var(--fg-secondary))] mt-4">
           ¿Necesitas cancelar?{' '}
-          <a href={`/cancelar/${cancelToken}`} className="text-brand-red hover:underline">
-            Cancelar mi reserva
+          <a
+            href={`/cancelar/${cancelToken}`}
+            className="text-brand-red hover:underline"
+          >
+            Cancelar mi cita
           </a>
         </p>
       )}
@@ -732,61 +612,42 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
   )
 }
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+// ─── Main booking flow ────────────────────────────────────────────────────────
+const STEPS = ['Servicio', 'Barbero', 'Fecha y hora', 'Confirmar']
+
 export function BookingFlow({ barbershop, services, workers, availability }: Props) {
-  // step: 0=personas, 1=servicios, 2=barbero, 3=horarios, 4=confirmar
   const [step, setStep] = useState(0)
-  const [peopleCount, setPeopleCount] = useState(1)
-  const [people, setPeople] = useState<Person[]>([{ services: [], time: null }])
-  const [activePerson, setActivePerson] = useState(0) // índice de la persona cuyos servicios se editan
+  const [selectedServices, setSelectedServices] = useState<Service[]>([])
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
   const [selectedDate, setSelectedDate] = useState(new Date())
-  const [selectedTimes, setSelectedTimes] = useState<string[]>([])
+  const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [successData, setSuccessData] = useState<{ id: string; cancelToken: string } | null>(null)
 
-  // Duración máxima entre personas (para calcular slots; como todo cabe en 60min, será 60)
-  const maxDuration = Math.max(
-    60,
-    ...people.map(p => p.services.reduce((s, svc) => s + svc.duration_minutes, 0))
-  )
+  const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0)
 
-  const setCount = (n: number) => {
-    setPeopleCount(n)
-    setPeople(Array.from({ length: n }, (_, i) => people[i] ?? { services: [], time: null }))
-    setActivePerson(0)
-    setSelectedTimes([])
-    setStep(1)
-  }
-
-  const toggleServiceForActive = (svc: Service) => {
-    setPeople(prev =>
-      prev.map((p, i) => {
-        if (i !== activePerson) return p
-        const has = p.services.some(s => s.id === svc.id)
-        return {
-          ...p,
-          services: has ? p.services.filter(s => s.id !== svc.id) : [...p.services, svc],
-        }
-      })
+  const toggleService = (svc: Service) => {
+    setSelectedServices(prev =>
+      prev.some(s => s.id === svc.id)
+        ? prev.filter(s => s.id !== svc.id)
+        : [...prev, svc]
     )
+    setSelectedTime(null)
   }
 
-  const toggleTime = (t: string) => {
-    setSelectedTimes(prev =>
-      prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]
-    )
+  const canProceed = () => {
+    if (step === 0) return selectedServices.length > 0
+    if (step === 1) return !!selectedWorker
+    if (step === 2) return !!selectedTime
+    return false
   }
 
-  // ¿La persona activa tiene al menos un servicio?
-  const activeHasServices = people[activePerson]?.services.length > 0
-  const allPeopleHaveServices = people.every(p => p.services.length > 0)
-  const timesComplete = selectedTimes.length === peopleCount
-
-  const STEPS = ['Personas', 'Servicios', 'Barbero', 'Horario', 'Confirmar']
+  const handleNext = () => {
+    if (canProceed()) setStep(s => s + 1)
+  }
 
   return (
     <div className="min-h-screen bg-[rgb(var(--bg))]">
-      {/* Header */}
+      {/* Shop header */}
       <div className="border-b bg-[rgb(var(--bg))]/80 backdrop-blur-md sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-4">
           <div className="flex items-start justify-between">
@@ -809,6 +670,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
                 )}
               </div>
             </div>
+            {/* Mini logo */}
             <div className="flex items-center gap-2 shrink-0">
               <div className="relative">
                 <span className="text-2xl font-black text-[rgb(var(--fg))] leading-none">
@@ -832,10 +694,10 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
       <div className="max-w-lg mx-auto px-4 py-6">
         {successData ? (
           <BookingSuccess
-            people={people}
+            services={selectedServices}
             worker={selectedWorker}
             date={selectedDate}
-            times={selectedTimes}
+            time={selectedTime}
             barbershop={barbershop}
             cancelToken={successData.cancelToken}
           />
@@ -847,7 +709,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
                 <button
                   key={i}
                   onClick={() => i < step && setStep(i)}
-                  className={`flex-1 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-all ${
+                  className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all ${
                     i === step
                       ? 'bg-brand-red text-white'
                       : i < step
@@ -860,110 +722,64 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
               ))}
             </div>
 
-            {/* Step 0: personas */}
+            {/* Step content */}
             {step === 0 && (
-              <StepPeopleCount count={peopleCount} onSelect={setCount} />
-            )}
-
-            {/* Step 1: servicios (por persona si es grupal) */}
-            {step === 1 && (
               <>
-                {peopleCount > 1 && (
-                  <div className="flex gap-2 mb-4">
-                    {people.map((p, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setActivePerson(i)}
-                        className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-all ${
-                          activePerson === i
-                            ? 'bg-brand-red text-white border-brand-red'
-                            : p.services.length > 0
-                            ? 'border-brand-red/30 text-brand-red'
-                            : 'border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg-secondary))]'
-                        }`}
-                      >
-                        {p.services.length > 0 && '✓ '}
-                        {i === 0 ? 'Tú' : `Acomp. ${i}`}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
                 <StepService
                   services={services}
-                  selected={people[activePerson]?.services ?? []}
-                  onToggle={toggleServiceForActive}
-                  personLabel={peopleCount > 1 ? (activePerson === 0 ? 'Servicios para ti' : `Servicios acompañante ${activePerson}`) : undefined}
+                  selected={selectedServices}
+                  onToggle={toggleService}
                 />
-
-                {/* Navegación entre personas / continuar */}
-                {peopleCount > 1 && activePerson < peopleCount - 1 ? (
-                  activeHasServices && (
-                    <button
-                      onClick={() => setActivePerson(activePerson + 1)}
-                      className="btn-primary w-full mt-4"
-                    >
-                      Siguiente persona <ChevronRight size={16} className="inline ml-1" />
-                    </button>
-                  )
-                ) : (
-                  allPeopleHaveServices && (
-                    <button onClick={() => setStep(2)} className="btn-primary w-full mt-4">
-                      Continuar <ChevronRight size={16} className="inline ml-1" />
-                    </button>
-                  )
-                )}
-              </>
-            )}
-
-            {/* Step 2: barbero */}
-            {step === 2 && (
-              <StepWorker
-                workers={workers}
-                selected={selectedWorker}
-                onSelect={wk => {
-                  setSelectedWorker(wk)
-                  setSelectedTimes([])
-                  setStep(3)
-                }}
-              />
-            )}
-
-            {/* Step 3: horarios */}
-            {step === 3 && selectedWorker && (
-              <>
-                <StepDateTime
-                  selectedDate={selectedDate}
-                  selectedTimes={selectedTimes}
-                  onDateChange={setSelectedDate}
-                  onToggleTime={toggleTime}
-                  availability={availability}
-                  workerId={selectedWorker.id}
-                  serviceDuration={maxDuration}
-                  peopleCount={peopleCount}
-                />
-                {timesComplete && (
-                  <button onClick={() => setStep(4)} className="btn-primary w-full mt-4">
+                {selectedServices.length > 0 && (
+                  <button onClick={() => setStep(1)} className="btn-primary w-full mt-4">
                     Continuar <ChevronRight size={16} className="inline ml-1" />
                   </button>
                 )}
               </>
             )}
-
-            {/* Step 4: confirmar */}
-            {step === 4 && selectedWorker && timesComplete && (
+            {step === 1 && (
+              <StepWorker
+                workers={workers}
+                selected={selectedWorker}
+                onSelect={wk => {
+                  setSelectedWorker(wk)
+                  setSelectedTime(null)
+                  setStep(2)
+                }}
+              />
+            )}
+            {step === 2 && selectedServices.length > 0 && selectedWorker && (
+              <>
+                <StepDateTime
+                  selectedDate={selectedDate}
+                  selectedTime={selectedTime}
+                  onDateChange={setSelectedDate}
+                  onTimeSelect={t => { setSelectedTime(t) }}
+                  availability={availability}
+                  barbershopId={barbershop.id}
+                  workerId={selectedWorker.id}
+                  serviceDuration={totalDuration}
+                />
+                {selectedTime && (
+                  <button onClick={() => setStep(3)} className="btn-primary w-full mt-4">
+                    Continuar <ChevronRight size={16} className="inline ml-1" />
+                  </button>
+                )}
+              </>
+            )}
+            {step === 3 && selectedServices.length > 0 && selectedWorker && selectedTime && (
               <StepConfirm
-                barbershop={barbershop}
-                people={people}
+                barbershopId={barbershop.id}
+                services={selectedServices}
                 worker={selectedWorker}
                 date={selectedDate}
-                times={selectedTimes}
+                time={selectedTime}
                 onSuccess={(id, cancelToken) => setSuccessData({ id, cancelToken })}
               />
             )}
 
-            {/* Botón volver */}
-            {step > 0 && step < 4 && (
+            {/* Back button */}
+            {step > 0 && step < 3 && (
               <button
                 onClick={() => setStep(s => s - 1)}
                 className="flex items-center gap-1 text-sm text-[rgb(var(--fg-secondary))] hover:text-[rgb(var(--fg))] transition-colors mt-4"

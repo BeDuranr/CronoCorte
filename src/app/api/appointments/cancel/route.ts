@@ -10,10 +10,10 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient()
 
-    // Buscar la cita por cancel_token
+    // Buscar la cita por cancel_token (el token base corresponde a la cita principal)
     const { data: appt, error: fetchError } = await supabase
       .from('appointments')
-      .select('id, status, starts_at')
+      .select('id, status, starts_at, booking_group_id')
       .eq('cancel_token', token)
       .single()
 
@@ -29,12 +29,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'La cita ya pasó y no puede cancelarse' }, { status: 400 })
     }
 
-    const { error: updateError } = await supabase
-      .from('appointments')
-      .update({ status: 'cancelled' })
-      .eq('id', appt.id)
+    // Si la cita pertenece a un grupo, cancelar todo el grupo de una vez.
+    // Si no, cancelar solo esta cita.
+    if (appt.booking_group_id) {
+      const { error: groupError } = await supabase
+        .from('appointments')
+        .update({ status: 'cancelled' })
+        .eq('booking_group_id', appt.booking_group_id)
+        .not('status', 'eq', 'cancelled')
 
-    if (updateError) throw updateError
+      if (groupError) throw groupError
+    } else {
+      const { error: updateError } = await supabase
+        .from('appointments')
+        .update({ status: 'cancelled' })
+        .eq('id', appt.id)
+
+      if (updateError) throw updateError
+    }
 
     return NextResponse.json({ success: true })
   } catch (err: any) {

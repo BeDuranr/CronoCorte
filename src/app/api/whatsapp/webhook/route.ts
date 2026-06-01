@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
     const { data: appointment } = await supabase
       .from('appointments')
       .select(`
-        id, client_name, status, payment_verified,
+        id, client_name, status, payment_verified, booking_group_id, total_amount,
         services(name, price),
         barbershops(id, name, phone, agent_enabled, agent_name, agent_tone, agent_prompt_custom, transfer_info, slug)
       `)
@@ -224,20 +224,30 @@ export async function POST(req: NextRequest) {
     // ── Si el cliente envió una imagen, intentar verificar como comprobante ──
     if (mediaUrl && mediaType?.startsWith('image/') && appointment) {
       const service = appointment.services as any
-      const price = service?.price ?? 0
+
+      // Monto esperado: si la reserva es grupal (o tiene total guardado), usar
+      // total_amount; si no, caer al precio del servicio individual.
+      const groupId = (appointment as any).booking_group_id as string | null
+      const totalAmount = (appointment as any).total_amount as number | null
+      const price = totalAmount ?? service?.price ?? 0
 
       await sendWhatsApp(from, `🔍 Verificando tu comprobante...`)
 
       const result = await verifyPaymentReceipt(mediaUrl, price)
 
       if (result.verified) {
-        await supabase
-          .from('appointments')
-          .update({
-            status: 'confirmed',
-            payment_verified: true,
-          })
-          .eq('id', appointment.id)
+        // Confirmar: si hay grupo, confirmar todas las citas del grupo; si no, solo esta.
+        if (groupId) {
+          await supabase
+            .from('appointments')
+            .update({ status: 'confirmed', payment_verified: true })
+            .eq('booking_group_id', groupId)
+        } else {
+          await supabase
+            .from('appointments')
+            .update({ status: 'confirmed', payment_verified: true })
+            .eq('id', appointment.id)
+        }
 
         await sendWhatsApp(
           from,

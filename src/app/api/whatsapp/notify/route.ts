@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     const { data: appt, error } = await supabase
       .from('appointments')
       .select(`
-        id, client_name, client_phone, starts_at, ends_at, cancel_token,
+        id, client_name, client_phone, starts_at, ends_at, cancel_token, booking_group_id, total_amount,
         services(name, price, duration_minutes),
         workers(name),
         barbershops(name, transfer_info, phone)
@@ -75,32 +75,58 @@ export async function POST(req: NextRequest) {
     const shop = appt.barbershops as any
     const service = appt.services as any
     const worker = appt.workers as any
+    const groupId = (appt as any).booking_group_id as string | null
+    const totalAmount = (appt as any).total_amount as number | null
+
+    // Si es reserva grupal, traer todas las citas del grupo para listar los bloques
+    let groupAppts: any[] = [appt]
+    if (groupId) {
+      const { data: all } = await supabase
+        .from('appointments')
+        .select(`starts_at, services(name)`)
+        .eq('booking_group_id', groupId)
+        .order('starts_at', { ascending: true })
+      if (all && all.length) groupAppts = all
+    }
 
     const date = new Date(appt.starts_at)
     const dateStr = date.toLocaleDateString('es-CL', {
       weekday: 'long', day: 'numeric', month: 'long',
     })
-    const timeStr = date.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
     const cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/cancelar/${appt.cancel_token}`
 
-    const price = service?.price
-      ? new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(service.price)
-      : ''
+    const fmt = (n: number) =>
+      new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(n)
+
+    // Monto a mostrar: total del grupo si existe, si no el precio del servicio
+    const displayAmount = totalAmount ?? service?.price ?? 0
 
     const transferBlock = shop?.transfer_info
       ? `\n💳 *Datos de transferencia:*\n${shop.transfer_info}\n\nEnvía el comprobante aquí mismo para confirmar tu hora.`
       : ''
 
+    const isGroup = !!groupId && groupAppts.length > 1
+
+    // Construir el bloque de detalle (1 o varias personas)
+    let detalle: string
+    if (isGroup) {
+      const lineas = groupAppts.map((a, i) => {
+        const t = new Date(a.starts_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+        const svcName = (a.services as any)?.name ?? 'Servicio'
+        const quien = i === 0 ? 'Tú' : `Acompañante ${i}`
+        return `• ${quien}: ${svcName} a las ${t}`
+      })
+      detalle = `📋 *Detalle (${groupAppts.length} personas):*\n${lineas.join('\n')}\n• Barbero: ${worker?.name}\n• Fecha: ${dateStr}\n• Total: ${fmt(displayAmount)}`
+    } else {
+      const timeStr = date.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+      detalle = `📋 *Detalle:*\n• Servicio: ${service?.name}\n• Barbero: ${worker?.name}\n• Fecha: ${dateStr}\n• Hora: ${timeStr}\n• Precio: ${fmt(displayAmount)}`
+    }
+
     const message = `✂️ *¡Hola ${appt.client_name}!*
 
-Tu hora en *${shop?.name}* está *pendiente de pago*.
+Tu ${isGroup ? 'reserva' : 'hora'} en *${shop?.name}* está *pendiente de pago*.
 
-📋 *Detalle:*
-• Servicio: ${service?.name}
-• Barbero: ${worker?.name}
-• Fecha: ${dateStr}
-• Hora: ${timeStr}
-• Precio: ${price}
+${detalle}
 ${transferBlock}
 
 ❌ Para cancelar: ${cancelUrl}
@@ -108,12 +134,6 @@ ${transferBlock}
 _Te recordaremos 24h y 1h antes de tu cita._`
 
     await sendWhatsApp(appt.client_phone, message)
-
-    // Log notification sent
-    await supabase
-      .from('appointments')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', appointment_id)
 
     return NextResponse.json({ success: true })
   } catch (err: any) {
