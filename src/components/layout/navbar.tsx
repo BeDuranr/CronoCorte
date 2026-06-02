@@ -21,7 +21,12 @@ export function Navbar({ role, barbershopName }: NavbarProps) {
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
-    setDark(document.documentElement.classList.contains('dark'))
+    // Leer el tema guardado y aplicarlo (respaldo por si el script del head no corrió)
+    const saved = localStorage.getItem('theme')
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    const shouldBeDark = saved === 'dark' || (!saved && prefersDark)
+    setDark(shouldBeDark)
+    document.documentElement.classList.toggle('dark', shouldBeDark)
   }, [])
 
   const toggleDark = () => {

@@ -365,9 +365,19 @@ export function DashboardView({ barbershop, todayAppointments, weekStats, worker
           {/* Booking link */}
           <div className="card p-4 border-brand-red/20">
             <p className="text-xs text-[rgb(var(--fg-secondary))] mb-2">Tu link de reservas:</p>
-            <code className="text-xs bg-[rgb(var(--bg-secondary))] px-2 py-1 rounded text-brand-red block truncate">
-              cronocorte.app/{barbershop.slug}
-            </code>
+            <button
+              onClick={() => {
+                const url = `${window.location.origin}/${barbershop.slug}`
+                navigator.clipboard.writeText(url)
+                toast.success('Link copiado')
+              }}
+              className="w-full text-left"
+            >
+              <code className="text-xs bg-[rgb(var(--bg-secondary))] px-2 py-1 rounded text-brand-red block truncate hover:bg-brand-red/10 transition-colors">
+                crono-corte.vercel.app/{barbershop.slug}
+              </code>
+            </button>
+            <p className="text-[10px] text-[rgb(var(--fg-secondary))] mt-1.5">Toca para copiar</p>
           </div>
         </div>
       </div>

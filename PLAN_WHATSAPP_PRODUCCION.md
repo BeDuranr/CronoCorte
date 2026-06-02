@@ -41,6 +41,21 @@ Costo total estimado: **unos pocos dólares USD al mes** (renta + mensajes de ut
 
 ---
 
+## DECISIÓN: usar chip prepago propio (NO comprar número en Twilio)
+
+Benja usará un **chip físico prepago chileno** dedicado a la barbería, en su mismo teléfono (línea personal en eSIM + chip barbería físico). Ventajas:
+- No se paga renta mensual de número a Twilio (~$1-3 USD/mes ahorrados)
+- Número chileno real → más confianza para el cliente
+- Separa lo personal del negocio
+
+### Reglas críticas del chip
+1. **NUNCA activar WhatsApp** (ni normal ni Business app) en el número de la barbería. Si se activa, hay que borrar esa cuenta antes de poder registrarlo en la API. Un número está en WhatsApp normal O en la API Business, nunca en ambos.
+2. **Para el registro:** el chip debe estar en el teléfono para recibir el SMS/llamada de verificación de Twilio/Meta.
+3. **Después del registro:** los mensajes de WhatsApp de clientes los maneja Twilio y los procesa la app (se ven en el dashboard de CronoCorte, NO llegan al teléfono). El chip solo es el "dueño" del número.
+4. **Mantener el chip con saldo/activo** con recargas mínimas periódicas, por si Meta/Twilio piden re-verificación por SMS. Si el número se desactiva, se pierde la verificación y hay que re-registrar.
+
+---
+
 ## Paso a paso
 
 ### 1. Salir del modo trial
