@@ -32,24 +32,47 @@ function isReceiptDateValid(receiptDate: string | null): boolean {
   if (!receiptDate) return false
 
   try {
-    // Normalizar separadores: "25/04/2025", "25-04-2025" o "2025-04-25"
-    const normalized = receiptDate.replace(/\//g, '-')
-    const parsed = new Date(
-      normalized.includes('T') ? normalized : `${normalized}T12:00:00`
-    )
-    if (isNaN(parsed.getTime())) return false
+    // Normalizar separadores: "01/06/2026", "01-06-2026" o "2026-06-01"
+    // Quitar parte de hora si viene incluida
+    const clean = receiptDate.trim().split('T')[0].split(' ')[0].replace(/\//g, '-')
+    const parts = clean.split('-').map(p => parseInt(p, 10))
+    if (parts.length !== 3 || parts.some(isNaN)) return false
 
-    // Fecha actual en Chile (UTC-3 / UTC-4 según horario)
-    const nowChile = new Date(
-      new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' })
-    )
-    const todayChile = new Date(nowChile.getFullYear(), nowChile.getMonth(), nowChile.getDate())
-    const yesterdayChile = new Date(todayChile)
-    yesterdayChile.setDate(todayChile.getDate() - 1)
+    // Detectar formato: si el primer componente tiene 4 dígitos => YYYY-MM-DD,
+    // si no => DD-MM-YYYY (formato chileno típico de los comprobantes).
+    let year: number, month: number, day: number
+    if (clean.split('-')[0].length === 4) {
+      // YYYY-MM-DD
+      ;[year, month, day] = parts
+    } else {
+      // DD-MM-YYYY
+      ;[day, month, year] = parts
+    }
 
-    const receiptDay = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
+    // Validación básica de rangos
+    if (month < 1 || month > 12 || day < 1 || day > 31) return false
 
-    return receiptDay >= yesterdayChile && receiptDay <= todayChile
+    // Día del comprobante como número comparable: YYYYMMDD
+    const receiptNum = year * 10000 + month * 100 + day
+
+    // Fecha actual en Chile (formato es-CL da DD-MM-YYYY)
+    const nowChileStr = new Date().toLocaleDateString('es-CL', {
+      timeZone: 'America/Santiago',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+    const [cd, cm, cy] = nowChileStr.replace(/\//g, '-').split('-').map(p => parseInt(p, 10))
+    const todayNum = cy * 10000 + cm * 100 + cd
+
+    // Ayer (restando 1 día con un objeto Date en zona Chile)
+    const nowChile = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' }))
+    nowChile.setDate(nowChile.getDate() - 1)
+    const yesterdayNum =
+      nowChile.getFullYear() * 10000 + (nowChile.getMonth() + 1) * 100 + nowChile.getDate()
+
+    // Válido si el comprobante es de hoy o de ayer
+    return receiptNum === todayNum || receiptNum === yesterdayNum
   } catch {
     return false
   }
