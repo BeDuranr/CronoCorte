@@ -59,6 +59,26 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient()
 
+    // ── Rate limiting anti-spam: máximo de citas pendientes sin pagar por teléfono ──
+    // Un cliente real no necesita muchas reservas sin pagar a la vez. Esto frena
+    // que un script cree citas falsas masivamente con un mismo número.
+    const MAX_PENDING_PER_PHONE = 3
+    const { count: pendingCount } = await supabase
+      .from('appointments')
+      .select('id', { count: 'exact', head: true })
+      .eq('client_phone', client_phone)
+      .eq('status', 'pending_payment')
+
+    if ((pendingCount ?? 0) >= MAX_PENDING_PER_PHONE) {
+      return NextResponse.json(
+        {
+          error:
+            'Tienes varias reservas pendientes de pago. Confírmalas o espera a que se liberen antes de reservar otra.',
+        },
+        { status: 429 }
+      )
+    }
+
     // ── Validar que ningún bloque choque con citas existentes ─────────
     for (const b of normalizedBlocks) {
       const { data: conflict } = await supabase

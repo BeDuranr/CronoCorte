@@ -186,6 +186,8 @@ function verifyTwilioSignature(req: NextRequest, body: URLSearchParams): boolean
   if (!authToken) return false
 
   const twilioSignature = req.headers.get('x-twilio-signature') ?? ''
+  if (!twilioSignature) return false
+
   const url = `${process.env.NEXT_PUBLIC_APP_URL}/api/whatsapp/webhook`
 
   // Ordenar params y concatenar al URL
@@ -198,10 +200,17 @@ function verifyTwilioSignature(req: NextRequest, body: URLSearchParams): boolean
     .update(sortedParams)
     .digest('base64')
 
-  return crypto.timingSafeEqual(
-    Buffer.from(twilioSignature),
-    Buffer.from(expected)
-  )
+  // timingSafeEqual lanza si los buffers tienen distinta longitud, por eso
+  // comparamos longitudes primero y envolvemos en try/catch para devolver
+  // false limpio ante una firma malformada en vez de crashear con 500.
+  try {
+    const sigBuf = Buffer.from(twilioSignature)
+    const expBuf = Buffer.from(expected)
+    if (sigBuf.length !== expBuf.length) return false
+    return crypto.timingSafeEqual(sigBuf, expBuf)
+  } catch {
+    return false
+  }
 }
 
 // Twilio sends form-encoded data
