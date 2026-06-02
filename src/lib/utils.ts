@@ -53,6 +53,11 @@ export function calculateAvailableSlots({
   const slots: string[] = []
   const now = new Date()
 
+  // Anticipación mínima: no se pueden reservar horas que empiecen dentro de
+  // los próximos 60 minutos.
+  const MIN_ADVANCE_MINUTES = 60
+  const earliest = addMinutes(now, MIN_ADVANCE_MINUTES)
+
   // start_time puede venir como "09:00" o "09:00:00" desde PostgreSQL
   const startTime = availability.start_time.slice(0, 5)
   const endTime = availability.end_time.slice(0, 5)
@@ -70,9 +75,10 @@ export function calculateAvailableSlots({
       return current < aptEnd && slotEnd > aptStart
     })
 
-    const isPast = current <= now
+    // El slot debe empezar al menos MIN_ADVANCE_MINUTES después de ahora
+    const tooSoon = current < earliest
 
-    if (!isBooked && !isPast) {
+    if (!isBooked && !tooSoon) {
       slots.push(format(current, 'HH:mm'))
     }
 
