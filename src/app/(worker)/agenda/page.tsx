@@ -40,20 +40,29 @@ export default async function AgendaPage() {
   }
 
   // Today's appointments for this worker
+  // Fecha "hoy" en zona Chile (en-CA da formato YYYY-MM-DD)
   const today = new Date()
-  const todayStr = today.toISOString().split('T')[0]
+  const todayStr = today.toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
 
-  const { data: todayAppts } = await supabase
+  // Rango ampliado +/-1 dia (las citas se guardan en UTC); luego filtramos por dia Chile
+  const prevStr = new Date(today.getTime() - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
+  const nextStr = new Date(today.getTime() + 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
+
+  const { data: todayApptsRaw } = await supabase
     .from('appointments')
     .select(`
       id, client_name, client_phone, starts_at, ends_at, status, notes, recommended_style,
       services(name, price, duration_minutes)
     `)
     .eq('worker_id', worker.id)
-    .gte('starts_at', `${todayStr}T00:00:00`)
-    .lte('starts_at', `${todayStr}T23:59:59`)
+    .gte('starts_at', `${prevStr}T00:00:00`)
+    .lte('starts_at', `${nextStr}T23:59:59`)
     .not('status', 'eq', 'cancelled')
     .order('starts_at', { ascending: true })
+
+  const todayAppts = (todayApptsRaw ?? []).filter(
+    a => new Date(a.starts_at).toLocaleDateString('en-CA', { timeZone: 'America/Santiago' }) === todayStr
+  )
 
   // This week's stats
   const weekStart = new Date(today)

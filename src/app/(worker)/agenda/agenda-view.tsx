@@ -192,6 +192,10 @@ export function AgendaView({ worker, todayAppointments, weekStats }: Props) {
     setLoadingDate(true)
     try {
       const dateStr = format(date, 'yyyy-MM-dd')
+      // Rango ampliado +/-1 dia: las citas se guardan en UTC y una hora en Chile
+      // puede caer en el dia UTC vecino. Luego filtramos por fecha real en Chile.
+      const prevStr = format(addDays(date, -1), 'yyyy-MM-dd')
+      const nextStr = format(addDays(date, 1), 'yyyy-MM-dd')
       const { data } = await supabase
         .from('appointments')
         .select(`
@@ -199,12 +203,17 @@ export function AgendaView({ worker, todayAppointments, weekStats }: Props) {
           services(name, price, duration_minutes)
         `)
         .eq('worker_id', worker.id)
-        .gte('starts_at', `${dateStr}T00:00:00`)
-        .lte('starts_at', `${dateStr}T23:59:59`)
+        .gte('starts_at', `${prevStr}T00:00:00`)
+        .lte('starts_at', `${nextStr}T23:59:59`)
         .not('status', 'eq', 'cancelled')
         .order('starts_at', { ascending: true })
 
-      setAppointments((data as any[]) ?? [])
+      // Filtrar a las citas cuyo dia (en zona Chile) coincide con el seleccionado
+      const filtered = ((data as any[]) ?? []).filter(
+        a => new Date(a.starts_at).toLocaleDateString('en-CA', { timeZone: 'America/Santiago' }) === dateStr
+      )
+
+      setAppointments(filtered)
     } finally {
       setLoadingDate(false)
     }

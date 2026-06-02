@@ -54,11 +54,14 @@ export function CitasView({ barbershopId, appointments: initial, workers }: Prop
     })
   }, [appointments, search, statusFilter, workerFilter])
 
-  // Group by day
+  // Group by day (usando fecha en zona Chile, no el UTC crudo)
+  const dayKeyChile = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
+
   const grouped = useMemo(() => {
     const map: Record<string, any[]> = {}
     filtered.forEach(a => {
-      const day = a.starts_at.slice(0, 10)
+      const day = dayKeyChile(a.starts_at)
       if (!map[day]) map[day] = []
       map[day].push(a)
     })

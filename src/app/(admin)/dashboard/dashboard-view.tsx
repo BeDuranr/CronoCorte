@@ -158,11 +158,16 @@ export function DashboardView({ barbershop, todayAppointments, weekStats, worker
     if (data) setAppointments(data as any[])
   }
 
-  // Group by day
+  // Group by day (usando fecha en zona Chile, no el UTC crudo del timestamp)
+  const dayKeyChile = (iso: string) => {
+    // en-CA da formato YYYY-MM-DD, ya en la zona indicada
+    return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
+  }
+
   const grouped = useMemo(() => {
     const map: Record<string, any[]> = {}
     appointments.forEach(a => {
-      const day = a.starts_at.slice(0, 10)
+      const day = dayKeyChile(a.starts_at)
       if (!map[day]) map[day] = []
       map[day].push(a)
     })
@@ -208,7 +213,7 @@ export function DashboardView({ barbershop, todayAppointments, weekStats, worker
           {
             icon: Calendar,
             label: 'Citas hoy',
-            value: appointments.filter(a => a.starts_at.startsWith(new Date().toISOString().slice(0, 10))).length,
+            value: appointments.filter(a => dayKeyChile(a.starts_at) === dayKeyChile(new Date().toISOString())).length,
             color: 'text-blue-500',
           },
           {
