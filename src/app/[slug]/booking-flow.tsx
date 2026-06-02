@@ -734,12 +734,17 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export function BookingFlow({ barbershop, services, workers, availability }: Props) {
+  // Si hay un solo barbero, se asigna automáticamente y se omite el paso de selección.
+  const singleWorker = workers.length === 1
+
   // step: 0=personas, 1=servicios, 2=barbero, 3=horarios, 4=confirmar
   const [step, setStep] = useState(0)
   const [peopleCount, setPeopleCount] = useState(1)
   const [people, setPeople] = useState<Person[]>([{ services: [], time: null }])
   const [activePerson, setActivePerson] = useState(0) // índice de la persona cuyos servicios se editan
-  const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
+  const [selectedWorker, setSelectedWorker] = useState<Worker | null>(
+    singleWorker ? workers[0] : null
+  )
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [selectedTimes, setSelectedTimes] = useState<string[]>([])
   const [successData, setSuccessData] = useState<{ id: string; cancelToken: string } | null>(null)
@@ -782,7 +787,14 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
   const allPeopleHaveServices = people.every(p => p.services.length > 0)
   const timesComplete = selectedTimes.length === peopleCount
 
-  const STEPS = ['Personas', 'Servicios', 'Barbero', 'Horario', 'Confirmar']
+  const STEPS = singleWorker
+    ? ['Personas', 'Servicios', 'Horario', 'Confirmar']
+    : ['Personas', 'Servicios', 'Barbero', 'Horario', 'Confirmar']
+
+  // Mapeo entre el índice visual del tab y el índice real de step interno.
+  // Con barbero único, el tab de "Horario" (visual 2) corresponde al step interno 3.
+  const stepToVisual = (s: number) => (singleWorker && s >= 3 ? s - 1 : s)
+  const visualToStep = (v: number) => (singleWorker && v >= 2 ? v + 1 : v)
 
   return (
     <div className="min-h-screen bg-[rgb(var(--bg))]">
@@ -843,21 +855,24 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
           <>
             {/* Step tabs */}
             <div className="flex gap-1 mb-6">
-              {STEPS.map((label, i) => (
-                <button
-                  key={i}
-                  onClick={() => i < step && setStep(i)}
-                  className={`flex-1 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-all ${
-                    i === step
-                      ? 'bg-brand-red text-white'
-                      : i < step
-                      ? 'bg-brand-red/10 text-brand-red cursor-pointer'
-                      : 'bg-[rgb(var(--bg-secondary))] text-[rgb(var(--fg-secondary))] cursor-not-allowed opacity-50'
-                  }`}
-                >
-                  {i < step ? '✓' : i + 1} {label}
-                </button>
-              ))}
+              {STEPS.map((label, i) => {
+                const visualStep = stepToVisual(step)
+                return (
+                  <button
+                    key={i}
+                    onClick={() => i < visualStep && setStep(visualToStep(i))}
+                    className={`flex-1 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-all ${
+                      i === visualStep
+                        ? 'bg-brand-red text-white'
+                        : i < visualStep
+                        ? 'bg-brand-red/10 text-brand-red cursor-pointer'
+                        : 'bg-[rgb(var(--bg-secondary))] text-[rgb(var(--fg-secondary))] cursor-not-allowed opacity-50'
+                    }`}
+                  >
+                    {i < visualStep ? '✓' : i + 1} {label}
+                  </button>
+                )
+              })}
             </div>
 
             {/* Step 0: personas */}
@@ -908,7 +923,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
                   )
                 ) : (
                   allPeopleHaveServices && (
-                    <button onClick={() => setStep(2)} className="btn-primary w-full mt-4">
+                    <button onClick={() => setStep(singleWorker ? 3 : 2)} className="btn-primary w-full mt-4">
                       Continuar <ChevronRight size={16} className="inline ml-1" />
                     </button>
                   )
@@ -965,7 +980,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
             {/* Botón volver */}
             {step > 0 && step < 4 && (
               <button
-                onClick={() => setStep(s => s - 1)}
+                onClick={() => setStep(s => (singleWorker && s === 3 ? 1 : s - 1))}
                 className="flex items-center gap-1 text-sm text-[rgb(var(--fg-secondary))] hover:text-[rgb(var(--fg))] transition-colors mt-4"
               >
                 <ChevronLeft size={14} /> Volver
