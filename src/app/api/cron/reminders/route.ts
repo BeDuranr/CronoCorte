@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
     const service = appt.services as any
     const worker = appt.workers as any
     const date = new Date(appt.starts_at)
-    const timeStr = date.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+    const timeStr = date.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hour12: false })
     const cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/cancelar/${appt.cancel_token}`
 
     const msg = `⏰ *Recordatorio — mañana tienes hora*
@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
     const service = appt.services as any
     const worker = appt.workers as any
     const date = new Date(appt.starts_at)
-    const timeStr = date.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+    const timeStr = date.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hour12: false })
 
     const msg = `🔔 *¡Tu hora es en ~1 hora!*
 

@@ -91,6 +91,7 @@ export async function POST(req: NextRequest) {
 
     const date = new Date(appt.starts_at)
     const dateStr = date.toLocaleDateString('es-CL', {
+      timeZone: 'America/Santiago',
       weekday: 'long', day: 'numeric', month: 'long',
     })
     const cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/cancelar/${appt.cancel_token}`
@@ -111,14 +112,14 @@ export async function POST(req: NextRequest) {
     let detalle: string
     if (isGroup) {
       const lineas = groupAppts.map((a, i) => {
-        const t = new Date(a.starts_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+        const t = new Date(a.starts_at).toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hour12: false })
         const svcName = (a.services as any)?.name ?? 'Servicio'
         const quien = i === 0 ? 'Tú' : `Acompañante ${i}`
         return `• ${quien}: ${svcName} a las ${t}`
       })
       detalle = `📋 *Detalle (${groupAppts.length} personas):*\n${lineas.join('\n')}\n• Barbero: ${worker?.name}\n• Fecha: ${dateStr}\n• Total: ${fmt(displayAmount)}`
     } else {
-      const timeStr = date.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+      const timeStr = date.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hour12: false })
       detalle = `📋 *Detalle:*\n• Servicio: ${service?.name}\n• Barbero: ${worker?.name}\n• Fecha: ${dateStr}\n• Hora: ${timeStr}\n• Precio: ${fmt(displayAmount)}`
     }
 
