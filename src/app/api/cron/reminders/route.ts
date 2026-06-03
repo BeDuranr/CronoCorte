@@ -5,7 +5,20 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID!
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN!
 const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM!
 
-async function sendWhatsApp(to: string, body: string) {
+// SID de las plantillas aprobadas por Meta (en variables de entorno)
+const TEMPLATE_RECORDATORIO_24H = process.env.TWILIO_TEMPLATE_RECORDATORIO_24H ?? ''
+const TEMPLATE_RECORDATORIO_1H = process.env.TWILIO_TEMPLATE_RECORDATORIO_1H ?? ''
+
+// Envía un mensaje de WhatsApp usando una plantilla aprobada
+async function sendWhatsAppTemplate(
+  to: string,
+  contentSid: string,
+  contentVariables: Record<string, string>
+): Promise<boolean> {
+  if (!contentSid) {
+    console.error('ContentSid vacío — plantilla no configurada en env')
+    return false
+  }
   const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`
   const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64')
   const res = await fetch(url, {
@@ -17,14 +30,21 @@ async function sendWhatsApp(to: string, body: string) {
     body: new URLSearchParams({
       From: TWILIO_WHATSAPP_FROM,
       To: `whatsapp:${to}`,
-      Body: body,
+      ContentSid: contentSid,
+      ContentVariables: JSON.stringify(contentVariables),
     }),
   })
-  return res.ok
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok || data.error_code) {
+    console.error('Twilio reminder error:', JSON.stringify({
+      httpStatus: res.status, errorCode: data.error_code, errorMessage: data.error_message,
+    }))
+    return false
+  }
+  return true
 }
 
-// Vercel Cron: runs every 30 minutes
-// vercel.json: { "crons": [{ "path": "/api/cron/reminders", "schedule": "*/30 * * * *" }] }
+// Vercel Cron / cron externo: corre cada 30 minutos
 export async function GET(req: NextRequest) {
   // Verify cron secret
   const authHeader = req.headers.get('authorization')
@@ -62,18 +82,22 @@ export async function GET(req: NextRequest) {
     const service = appt.services as any
     const worker = appt.workers as any
     const date = new Date(appt.starts_at)
+    const dateStr = date.toLocaleDateString('es-CL', {
+      timeZone: 'America/Santiago', weekday: 'long', day: 'numeric', month: 'long',
+    })
     const timeStr = date.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hour12: false })
-    const cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/cancelar/${appt.cancel_token}`
 
-    const msg = `⏰ *Recordatorio — mañana tienes hora*
+    // Plantilla recordatorio_24h:
+    // {{1}} nombre, {{2}} barbería, {{3}} fecha, {{4}} hora, {{5}} servicio
+    const vars = {
+      '1': appt.client_name,
+      '2': shop?.name ?? 'la barbería',
+      '3': dateStr,
+      '4': timeStr,
+      '5': service?.name ?? 'tu servicio',
+    }
 
-✂️ ${service?.name} con *${worker?.name}*
-📍 ${shop?.name}
-🕐 ${timeStr}
-
-❌ Si necesitas cancelar: ${cancelUrl}`
-
-    const ok = await sendWhatsApp(appt.client_phone, msg)
+    const ok = await sendWhatsAppTemplate(appt.client_phone, TEMPLATE_RECORDATORIO_24H, vars)
     if (ok) {
       await supabase
         .from('appointments')
@@ -109,14 +133,16 @@ export async function GET(req: NextRequest) {
     const date = new Date(appt.starts_at)
     const timeStr = date.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hour12: false })
 
-    const msg = `🔔 *¡Tu hora es en ~1 hora!*
+    // Plantilla recordatorio_1h:
+    // {{1}} nombre, {{2}} barbería, {{3}} hora, {{4}} dirección
+    const vars = {
+      '1': appt.client_name,
+      '2': shop?.name ?? 'la barbería',
+      '3': timeStr,
+      '4': shop?.address || shop?.name || 'la barbería',
+    }
 
-✂️ ${service?.name} con *${worker?.name}* a las *${timeStr}*
-${shop?.address ? `📍 ${shop.address}` : `📍 ${shop?.name}`}
-
-¡Te esperamos! ✂️`
-
-    const ok = await sendWhatsApp(appt.client_phone, msg)
+    const ok = await sendWhatsAppTemplate(appt.client_phone, TEMPLATE_RECORDATORIO_1H, vars)
     if (ok) {
       await supabase
         .from('appointments')
@@ -135,7 +161,7 @@ ${shop?.address ? `📍 ${shop.address}` : `📍 ${shop?.name}`}
     .eq('status', 'pending_payment')
     .lt('created_at', paymentDeadline.toISOString())
 
-  // confirmed cuya hora ya terminó → completed (asistió y pagó)
+  // confirmed cuya hora ya terminó → completed
   const { count: completedCount } = await supabase
     .from('appointments')
     .update({ status: 'completed' })
