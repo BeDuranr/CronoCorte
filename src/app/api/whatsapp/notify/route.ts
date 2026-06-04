@@ -106,15 +106,20 @@ export async function POST(req: NextRequest) {
       weekday: 'long', day: 'numeric', month: 'long',
     })
 
+    // Formato de monto SIN símbolo $ (WhatsApp rechaza $ en variables de plantilla).
+    // Resultado: "7.000" en vez de "$7.000".
     const fmt = (n: number) =>
-      new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(n)
+      new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0 }).format(n) + ' CLP'
 
-    // WhatsApp/Twilio NO permite saltos de linea, tabs ni 5+ espacios seguidos
-    // dentro de las variables de plantilla. Sanitizamos: \n -> " - ", colapsa espacios.
+    // WhatsApp/Twilio NO permite saltos de linea, tabs, 5+ espacios seguidos ni
+    // ciertos caracteres especiales ($, #, %, +) dentro de las variables de plantilla.
+    // Sanitizamos: \n -> " - ", quitamos caracteres problemáticos, colapsa espacios.
     const ensureString = (value: unknown) =>
       (value == null ? '' : String(value))
         .replace(/[\r\n]+/g, ' - ')
         .replace(/\t+/g, ' ')
+        .replace(/\+/g, 'y')
+        .replace(/[$#%]/g, '')
         .replace(/ {2,}/g, ' ')
         .trim()
 
