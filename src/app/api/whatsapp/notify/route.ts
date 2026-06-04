@@ -5,12 +5,10 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID!
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN!
 const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM! // 'whatsapp:+56981613286'
 
-// SID de la plantilla de confirmación aprobada por Meta.
-// Se lee de variable de entorno para poder cambiarlo sin tocar código.
+// SID de la plantilla de confirmación aprobada por Meta (en variable de entorno)
 const TEMPLATE_CONFIRMACION = process.env.TWILIO_TEMPLATE_CONFIRMACION ?? ''
 
 // Envía un mensaje de WhatsApp usando una plantilla aprobada (business-initiated).
-// contentVariables es un objeto { "1": "valor", "2": "valor", ... }
 async function sendWhatsAppTemplate(
   to: string,
   contentSid: string,
@@ -46,10 +44,10 @@ async function sendWhatsAppTemplate(
   }))
 
   if (!res.ok) {
-    throw new Error(`Twilio error ${res.status}: ${data.message || data.error_message}`)
+    throw new Error(`Twilio error ${res.status}: ${data.message || data.error_message || JSON.stringify(data)}`)
   }
   if (data.error_code) {
-    throw new Error(`Twilio error_code ${data.error_code}: ${data.error_message}`)
+    throw new Error(`Twilio error_code ${data.error_code}: ${data.error_message || JSON.stringify(data)}`)
   }
 
   return data
@@ -111,6 +109,15 @@ export async function POST(req: NextRequest) {
     const fmt = (n: number) =>
       new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(n)
 
+    // WhatsApp/Twilio NO permite saltos de linea, tabs ni 5+ espacios seguidos
+    // dentro de las variables de plantilla. Sanitizamos: \n -> " - ", colapsa espacios.
+    const ensureString = (value: unknown) =>
+      (value == null ? '' : String(value))
+        .replace(/[\r\n]+/g, ' - ')
+        .replace(/\t+/g, ' ')
+        .replace(/ {2,}/g, ' ')
+        .trim()
+
     // Monto a mostrar: total del grupo si existe, si no el precio del servicio
     const displayAmount = totalAmount ?? service?.price ?? 0
 
@@ -125,7 +132,6 @@ export async function POST(req: NextRequest) {
         const quien = i === 0 ? 'Tú' : `Acompañante ${i}`
         return `${quien}: ${svcName} a las ${t}`
       })
-      // En una sola línea separada por " | " para que la plantilla la muestre bien
       detalle = `${lineas.join(' | ')} (${dateStr}, con ${worker?.name})`
     } else {
       const timeStr = date.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hour12: false })
@@ -138,12 +144,14 @@ export async function POST(req: NextRequest) {
     // ── Variables de la plantilla confirmacion_reserva ──
     // {{1}} nombre, {{2}} barbería, {{3}} detalle, {{4}} total, {{5}} transferencia
     const contentVariables = {
-      '1': appt.client_name,
-      '2': shop?.name ?? 'la barbería',
-      '3': detalle,
-      '4': fmt(displayAmount),
-      '5': transferInfo,
+      '1': ensureString(appt.client_name),
+      '2': ensureString(shop?.name ?? 'la barbería'),
+      '3': ensureString(detalle),
+      '4': ensureString(fmt(displayAmount)),
+      '5': ensureString(transferInfo),
     }
+
+    console.log('WhatsApp notify contentVariables:', JSON.stringify(contentVariables))
 
     await sendWhatsAppTemplate(appt.client_phone, TEMPLATE_CONFIRMACION, contentVariables)
 
