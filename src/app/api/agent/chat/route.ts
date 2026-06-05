@@ -94,6 +94,7 @@ async function executeTool(name: string, args: Record<string, any>, barbershopId
 
   if (name === 'get_availability') {
     const { worker_id, date, service_id } = args
+    console.log('[get_availability] llamada con:', JSON.stringify({ worker_id, date, service_id }))
     const { data: service } = await supabase.from('services').select('duration_minutes').eq('id', service_id).single()
     const { data: avail } = await supabase
       .from('availability')
@@ -102,7 +103,7 @@ async function executeTool(name: string, args: Record<string, any>, barbershopId
       .eq('day_of_week', new Date(date + 'T12:00:00').getDay())
       .eq('is_active', true)
       .single()
-    if (!avail) return 'No hay atención ese día.'
+    if (!avail) return 'No hay atención ese día. Pregunta al cliente por otra fecha.'
     // Rango ampliado +/-1 dia: las citas se guardan en UTC y una hora en Chile
     // puede caer en el dia UTC vecino. calculateAvailableSlots compara con parseISO.
     const prevDay = new Date(date + 'T12:00:00'); prevDay.setDate(prevDay.getDate() - 1)
@@ -117,9 +118,11 @@ async function executeTool(name: string, args: Record<string, any>, barbershopId
       .lte('starts_at', `${nextStr}T23:59:59`)
       .not('status', 'eq', 'cancelled')
     const slots = calculateAvailableSlots({ availability: avail, existingAppointments: existing ?? [], serviceDuration: service?.duration_minutes ?? 30, date })
-    if (!slots.length) return `No hay horarios disponibles el ${date}.`
+    console.log('[get_availability] ocupadas:', (existing ?? []).length, '| slots libres:', JSON.stringify(slots))
+    if (!slots.length) return `No hay horarios disponibles el ${date}. Todos están ocupados o el día ya pasó. Ofrece otra fecha.`
     const dateLabel = format(new Date(date + 'T12:00:00'), "EEEE d 'de' MMMM", { locale: es })
-    return `Horarios disponibles el ${dateLabel}:\n${slots.join(', ')}`
+    // Respuesta explícita: el modelo SOLO debe ofrecer estas horas exactas.
+    return `HORARIOS DISPONIBLES (únicos válidos) para ${dateLabel}: ${slots.join(', ')}. No ofrezcas ninguna hora que no esté en esta lista exacta.`
   }
 
   if (name === 'create_appointment') {
@@ -224,9 +227,11 @@ FLUJO DE AGENDAMIENTO — sigue este orden, un paso por mensaje:
 6. Resumen en 3 líneas + "¿Confirmo?"
 7. Si confirma → create_appointment → "¡Listo, tu hora quedó agendada! 🗓️"
 
-REGLAS DE HORARIOS:
-- Solo ofrece horarios que get_availability haya devuelto. Nunca inventes horas.
-- Si create_appointment dice que el horario ya fue reservado, vuelve a llamar get_availability y ofrece las horas reales.
+REGLAS DE HORARIOS (CRÍTICAS):
+- Cada vez que el cliente pregunte por horarios de una fecha, DEBES llamar get_availability para esa fecha. Nunca respondas horarios de memoria.
+- Los únicos horarios que existen son los que devuelve get_availability en su última respuesta. Si una hora no está en esa lista, está OCUPADA: no la ofrezcas ni la aceptes.
+- Si el cliente pide una hora que no está en la lista, dile que no está disponible y repítele las horas exactas que sí devolvió get_availability.
+- Si cambia de fecha o de barbero, vuelve a llamar get_availability antes de ofrecer horas.
 
 Regla: si el cliente ya dio un dato, no lo vuelvas a pedir. Hoy es ${new Date().toLocaleDateString('es-CL', { timeZone: 'America/Santiago', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
 
