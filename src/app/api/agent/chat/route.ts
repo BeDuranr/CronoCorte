@@ -103,12 +103,18 @@ async function executeTool(name: string, args: Record<string, any>, barbershopId
       .eq('is_active', true)
       .single()
     if (!avail) return 'No hay atención ese día.'
+    // Rango ampliado +/-1 dia: las citas se guardan en UTC y una hora en Chile
+    // puede caer en el dia UTC vecino. calculateAvailableSlots compara con parseISO.
+    const prevDay = new Date(date + 'T12:00:00'); prevDay.setDate(prevDay.getDate() - 1)
+    const nextDay = new Date(date + 'T12:00:00'); nextDay.setDate(nextDay.getDate() + 1)
+    const prevStr = prevDay.toISOString().slice(0, 10)
+    const nextStr = nextDay.toISOString().slice(0, 10)
     const { data: existing } = await supabase
       .from('appointments')
       .select('starts_at, ends_at')
       .eq('worker_id', worker_id)
-      .gte('starts_at', `${date}T00:00:00`)
-      .lte('starts_at', `${date}T23:59:59`)
+      .gte('starts_at', `${prevStr}T00:00:00`)
+      .lte('starts_at', `${nextStr}T23:59:59`)
       .not('status', 'eq', 'cancelled')
     const slots = calculateAvailableSlots({ availability: avail, existingAppointments: existing ?? [], serviceDuration: service?.duration_minutes ?? 30, date })
     if (!slots.length) return `No hay horarios disponibles el ${date}.`
@@ -120,12 +126,37 @@ async function executeTool(name: string, args: Record<string, any>, barbershopId
     const { client_name, client_phone, worker_id, service_id, date, time } = args
     const { data: service } = await supabase.from('services').select('duration_minutes').eq('id', service_id).single()
     if (!service) return 'Servicio no encontrado.'
-    const end = new Date(`${date}T${time}:00`)
-    end.setMinutes(end.getMinutes() + service.duration_minutes)
+
+    // Construir timestamps con el offset real de Chile (igual que el booking-flow),
+    // para que la cita se guarde en la hora correcta y no corrida por UTC.
+    const localStart = new Date(`${date}T${time}:00`)
+    const offsetMinutes = localStart.getTimezoneOffset()
+    const sign = offsetMinutes <= 0 ? '+' : '-'
+    const abs = Math.abs(offsetMinutes)
+    const tz = `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`
+    const startsAt = `${date}T${time}:00${tz}`
+    const endLocal = new Date(localStart.getTime() + service.duration_minutes * 60000)
+    const endHH = String(endLocal.getHours()).padStart(2, '0')
+    const endMM = String(endLocal.getMinutes()).padStart(2, '0')
+    const endsAt = `${date}T${endHH}:${endMM}:00${tz}`
+
     const phone = client_phone.startsWith('+') ? client_phone : `+56${client_phone}`
+
+    // Validar conflicto antes de crear (evita doble reserva)
+    const { data: conflict } = await supabase
+      .from('appointments')
+      .select('id')
+      .eq('worker_id', worker_id)
+      .not('status', 'eq', 'cancelled')
+      .lt('starts_at', endsAt)
+      .gt('ends_at', startsAt)
+      .limit(1)
+      .maybeSingle()
+    if (conflict) return 'Ese horario ya fue reservado. Por favor ofrece otro horario disponible.'
+
     const { error } = await supabase.from('appointments').insert({
       barbershop_id: barbershopId, worker_id, service_id, client_name, client_phone: phone,
-      starts_at: `${date}T${time}:00`, ends_at: end.toISOString().slice(0, 19),
+      starts_at: startsAt, ends_at: endsAt,
       status: 'pending_payment', cancel_token: crypto.randomUUID().replace(/-/g, ''),
     })
     if (error) return `Error al crear cita: ${error.message}`
@@ -193,7 +224,14 @@ FLUJO DE AGENDAMIENTO — sigue este orden, un paso por mensaje:
 6. Resumen en 3 líneas + "¿Confirmo?"
 7. Si confirma → create_appointment → "¡Listo, tu hora quedó agendada! 🗓️"
 
-Regla: si el cliente ya dio un dato, no lo vuelvas a pedir. Hoy es ${new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
+REGLAS CRÍTICAS DE HORARIOS:
+- NUNCA ofrezcas una hora sin antes llamar a get_availability para esa fecha exacta.
+- SOLO ofrece horarios que get_availability devolvió. Si un horario no está en esa lista, NO existe, no lo ofrezcas.
+- Si el cliente pide una hora que no está en la lista de get_availability, dile que no está disponible y muéstrale las que sí están.
+- Si create_appointment responde que el horario ya fue reservado, discúlpate, vuelve a llamar get_availability y ofrece las horas reales disponibles.
+- Nunca inventes ni asumas horarios. Siempre verifica con get_availability.
+
+Regla: si el cliente ya dio un dato, no lo vuelvas a pedir. Hoy es ${new Date().toLocaleDateString('es-CL', { timeZone: 'America/Santiago', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
 
 PRIVACIDAD: No tienes acceso a citas existentes ni datos de otros clientes. Si preguntan, di: "Eso solo lo puede ver el administrador. Yo te ayudo a agendar una hora nueva."`
 
