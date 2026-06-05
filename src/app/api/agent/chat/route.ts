@@ -224,12 +224,9 @@ FLUJO DE AGENDAMIENTO — sigue este orden, un paso por mensaje:
 6. Resumen en 3 líneas + "¿Confirmo?"
 7. Si confirma → create_appointment → "¡Listo, tu hora quedó agendada! 🗓️"
 
-REGLAS CRÍTICAS DE HORARIOS:
-- NUNCA ofrezcas una hora sin antes llamar a get_availability para esa fecha exacta.
-- SOLO ofrece horarios que get_availability devolvió. Si un horario no está en esa lista, NO existe, no lo ofrezcas.
-- Si el cliente pide una hora que no está en la lista de get_availability, dile que no está disponible y muéstrale las que sí están.
-- Si create_appointment responde que el horario ya fue reservado, discúlpate, vuelve a llamar get_availability y ofrece las horas reales disponibles.
-- Nunca inventes ni asumas horarios. Siempre verifica con get_availability.
+REGLAS DE HORARIOS:
+- Solo ofrece horarios que get_availability haya devuelto. Nunca inventes horas.
+- Si create_appointment dice que el horario ya fue reservado, vuelve a llamar get_availability y ofrece las horas reales.
 
 Regla: si el cliente ya dio un dato, no lo vuelvas a pedir. Hoy es ${new Date().toLocaleDateString('es-CL', { timeZone: 'America/Santiago', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
 
@@ -287,13 +284,36 @@ Puedes ayudar con: analizar fotos para recomendar cortes, responder sobre precio
       { role: 'user', content: message },
     ]
 
-    let response = await groq.chat.completions.create({
-      model: TEXT_MODEL,
-      messages,
-      tools,
-      tool_choice: 'auto',
-      max_tokens: 1024,
-    })
+    // Wrapper: el modelo Llama a veces genera tool calls malformadas y Groq
+    // responde con 'tool_use_failed' (HTTP 400). En ese caso reintentamos sin
+    // forzar herramientas para que el modelo responda en texto normal.
+    const callGroq = async (useTools: boolean) => {
+      return groq.chat.completions.create({
+        model: TEXT_MODEL,
+        messages,
+        ...(useTools ? { tools, tool_choice: 'auto' as const } : {}),
+        max_tokens: 1024,
+      })
+    }
+
+    const safeCall = async (useTools: boolean) => {
+      try {
+        return await callGroq(useTools)
+      } catch (e: any) {
+        const code = e?.error?.error?.code || e?.code
+        if (code === 'tool_use_failed' && useTools) {
+          // Reintentar una vez con herramientas; si vuelve a fallar, sin herramientas.
+          try {
+            return await callGroq(true)
+          } catch {
+            return await callGroq(false)
+          }
+        }
+        throw e
+      }
+    }
+
+    let response = await safeCall(true)
 
     // Agentic loop
     let iterations = 0
@@ -303,23 +323,28 @@ Puedes ayudar con: analizar fotos para recomendar cortes, responder sobre precio
       messages.push(assistantMsg)
 
       for (const tc of assistantMsg.tool_calls ?? []) {
-        const args = JSON.parse(tc.function.arguments || '{}')
-        const result = await executeTool(tc.function.name, args, barbershop_id)
+        let result: string
+        try {
+          const args = JSON.parse(tc.function.arguments || '{}')
+          result = await executeTool(tc.function.name, args, barbershop_id)
+        } catch (toolErr: any) {
+          result = `No se pudo ejecutar la acción. Pide al cliente que reformule o intenta de nuevo.`
+        }
         messages.push({ role: 'tool', tool_call_id: tc.id, content: result })
       }
 
-      response = await groq.chat.completions.create({
-        model: TEXT_MODEL,
-        messages,
-        tools,
-        tool_choice: 'auto',
-        max_tokens: 1024,
-      })
+      response = await safeCall(true)
     }
 
-    return NextResponse.json({ reply: response.choices[0].message.content })
+    const reply = response.choices[0].message.content
+      || 'Disculpa, no entendí bien. ¿Puedes repetirlo?'
+    return NextResponse.json({ reply })
   } catch (err: any) {
     console.error('Agent chat error:', err)
-    return NextResponse.json({ reply: `Error: ${err?.message || 'Error desconocido'}` }, { status: 200 })
+    // Nunca exponer errores técnicos crudos al cliente en el chat.
+    return NextResponse.json(
+      { reply: 'Disculpa, tuve un problema técnico. ¿Puedes intentarlo de nuevo en un momento?' },
+      { status: 200 }
+    )
   }
 }
