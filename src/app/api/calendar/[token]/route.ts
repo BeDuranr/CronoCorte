@@ -12,7 +12,7 @@ export async function GET(
     // Find worker by calendar_token
     const { data: worker } = await supabase
       .from('workers')
-      .select('id, name, barbershop_id, barbershops(name)')
+      .select('id, name, barbershop_id, barbershops(name, address)')
       .eq('calendar_token', params.token)
       .eq('is_active', true)
       .single()
@@ -23,9 +23,10 @@ export async function GET(
 
     const shop = worker.barbershops as any
 
-    // Get upcoming appointments (next 90 days)
-    const now = new Date()
-    const future = new Date(now)
+    // Get upcoming appointments (next 90 days) + past 7 days (para ver las recientes)
+    const past = new Date()
+    past.setDate(past.getDate() - 7)
+    const future = new Date()
     future.setDate(future.getDate() + 90)
 
     const { data: appointments } = await supabase
@@ -35,7 +36,7 @@ export async function GET(
         services(name)
       `)
       .eq('worker_id', worker.id)
-      .gte('starts_at', now.toISOString())
+      .gte('starts_at', past.toISOString())
       .lte('starts_at', future.toISOString())
       .not('status', 'eq', 'cancelled')
       .order('starts_at', { ascending: true })
@@ -51,13 +52,23 @@ export async function GET(
 
     for (const appt of appointments ?? []) {
       const service = appt.services as any
+      const statusLabel = appt.status === 'confirmed' ? '✅'
+        : appt.status === 'pending_payment' ? '⏳'
+        : appt.status === 'completed' ? '✔️' : ''
+
       cal.createEvent({
         id: appt.id,
         start: new Date(appt.starts_at),
         end: new Date(appt.ends_at),
-        summary: `${service?.name ?? 'Cita'} — ${appt.client_name}`,
-        description: appt.notes ?? undefined,
-        location: shop?.name,
+        timezone: 'America/Santiago',
+        summary: `${statusLabel} ${service?.name ?? 'Cita'} — ${appt.client_name}`,
+        description: [
+          `Cliente: ${appt.client_name}`,
+          `Servicio: ${service?.name ?? 'N/A'}`,
+          `Estado: ${appt.status}`,
+          appt.notes ? `Notas: ${appt.notes}` : '',
+        ].filter(Boolean).join('\n'),
+        location: shop?.address || shop?.name,
       })
     }
 
@@ -65,7 +76,7 @@ export async function GET(
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',
         'Content-Disposition': `attachment; filename="${worker.name}-agenda.ics"`,
-        'Cache-Control': 'no-cache, no-store',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
       },
     })
   } catch (err) {
