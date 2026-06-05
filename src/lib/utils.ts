@@ -51,32 +51,74 @@ export function calculateAvailableSlots({
   date: string // 'yyyy-MM-dd'
 }): string[] {
   const slots: string[] = []
-  const now = new Date()
 
   // Anticipación mínima: no se pueden reservar horas que empiecen dentro de
   // los próximos 60 minutos.
   const MIN_ADVANCE_MINUTES = 60
-  const earliest = addMinutes(now, MIN_ADVANCE_MINUTES)
+
+  // "Ahora" en hora de Chile, INDEPENDIENTE de la zona del servidor.
+  // Esto es clave: el booking-flow corre en el navegador (hora Chile) pero el
+  // agente corre en Vercel (UTC). Para que ambos calculen igual, derivamos la
+  // hora local de Chile y la fecha actual de Chile a partir del reloj UTC.
+  const nowChileStr = new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' })
+  const nowChile = new Date(nowChileStr)
+  const earliest = addMinutes(nowChile, MIN_ADVANCE_MINUTES)
+
+  // Fecha de hoy en Chile (YYYY-MM-DD) para comparar si 'date' es hoy
+  const todayChile = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
 
   // start_time puede venir como "09:00" o "09:00:00" desde PostgreSQL
   const startTime = availability.start_time.slice(0, 5)
   const endTime = availability.end_time.slice(0, 5)
-  const base = new Date(`${date}T${startTime}:00`)
-  const close = new Date(`${date}T${endTime}:00`)
 
-  let current = new Date(base)
+  // Construimos los slots como horas "de pared" (naif) del día pedido.
+  const [sh, sm] = startTime.split(':').map(Number)
+  const [eh, em] = endTime.split(':').map(Number)
+  const [yy, mm, dd] = date.split('-').map(Number)
+
+  // base y close como Date naif (en la zona del runtime, pero solo los usamos
+  // para iterar horas/minutos, no para comparar contra "ahora").
+  let current = new Date(yy, mm - 1, dd, sh, sm, 0, 0)
+  const close = new Date(yy, mm - 1, dd, eh, em, 0, 0)
+
+  // ¿El día pedido es hoy en Chile? Solo entonces aplica el filtro de anticipación.
+  const isToday = date === todayChile
+
+  // Hora+min actuales en Chile (para comparar "de pared" contra los slots)
+  const earliestChileMinutes =
+    earliest.getHours() * 60 + earliest.getMinutes()
+  const earliestIsSameDay =
+    earliest.toLocaleDateString('en-CA') === nowChile.toLocaleDateString('en-CA')
 
   while (addMinutes(current, serviceDuration) <= close) {
     const slotEnd = addMinutes(current, serviceDuration)
 
+    // Hora de pared del slot en formato comparable "YYYY-MM-DDTHH:mm"
+    const slotStartWall = `${date}T${format(current, 'HH:mm')}`
+    const slotEndWall = `${date}T${format(slotEnd, 'HH:mm')}`
+
     const isBooked = existingAppointments.some(apt => {
-      const aptStart = parseISO(apt.starts_at)
-      const aptEnd = parseISO(apt.ends_at)
-      return current < aptEnd && slotEnd > aptStart
+      // Convertir la cita (guardada en UTC con offset) a hora de pared de Chile,
+      // para comparar manzanas con manzanas contra el slot.
+      const aptStartWall = new Date(apt.starts_at)
+        .toLocaleString('sv-SE', { timeZone: 'America/Santiago' })
+        .replace(' ', 'T')
+        .slice(0, 16)
+      const aptEndWall = new Date(apt.ends_at)
+        .toLocaleString('sv-SE', { timeZone: 'America/Santiago' })
+        .replace(' ', 'T')
+        .slice(0, 16)
+      // Solapan si el slot empieza antes de que termine la cita y termina después de que empieza
+      return slotStartWall < aptEndWall && slotEndWall > aptStartWall
     })
 
-    // El slot debe empezar al menos MIN_ADVANCE_MINUTES después de ahora
-    const tooSoon = current < earliest
+    // Filtro de anticipación: solo si el día pedido es hoy en Chile.
+    let tooSoon = false
+    if (isToday) {
+      const slotMinutes = current.getHours() * 60 + current.getMinutes()
+      // Si earliest pasó a ser mañana (caso nocturno), todo hoy queda fuera.
+      tooSoon = earliestIsSameDay ? slotMinutes < earliestChileMinutes : true
+    }
 
     if (!isBooked && !tooSoon) {
       slots.push(format(current, 'HH:mm'))
