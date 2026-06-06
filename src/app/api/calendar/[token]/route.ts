@@ -2,6 +2,27 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import ical, { ICalCalendarMethod } from 'ical-generator'
 
+// VTIMEZONE para America/Santiago (Chile). Apple Calendar necesita este bloque
+// para interpretar correctamente las horas; sin él muestra horas equivocadas.
+// Chile: invierno UTC-4 (STANDARD), verano UTC-3 (DAYLIGHT).
+const SANTIAGO_VTIMEZONE = `BEGIN:VTIMEZONE
+TZID:America/Santiago
+BEGIN:STANDARD
+DTSTART:20220402T230000
+TZOFFSETFROM:-0300
+TZOFFSETTO:-0400
+TZNAME:-04
+RRULE:FREQ=YEARLY;BYMONTH=4;BYDAY=1SA
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:20220904T000000
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0300
+TZNAME:-03
+RRULE:FREQ=YEARLY;BYMONTH=9;BYDAY=1SU
+END:DAYLIGHT
+END:VTIMEZONE`
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { token: string } }
@@ -9,7 +30,6 @@ export async function GET(
   try {
     const supabase = createAdminClient()
 
-    // Find worker by calendar_token
     const { data: worker } = await supabase
       .from('workers')
       .select('id, name, barbershop_id, barbershops(name, address)')
@@ -23,7 +43,6 @@ export async function GET(
 
     const shop = worker.barbershops as any
 
-    // Get upcoming appointments (next 90 days) + past 7 days (para ver las recientes)
     const past = new Date()
     past.setDate(past.getDate() - 7)
     const future = new Date()
@@ -41,11 +60,15 @@ export async function GET(
       .not('status', 'eq', 'cancelled')
       .order('starts_at', { ascending: true })
 
-    // Build iCal feed
     const cal = ical({
       name: `${worker.name} — ${shop?.name}`,
       description: `Agenda de citas de ${worker.name} en ${shop?.name}`,
-      timezone: 'America/Santiago',
+      timezone: {
+        name: 'America/Santiago',
+        // Generador que devuelve el VTIMEZONE manual de Chile.
+        // ical-generator pasa el nombre de la zona como argumento.
+        generator: (_tz: string) => SANTIAGO_VTIMEZONE,
+      },
       method: ICalCalendarMethod.PUBLISH,
       prodId: { company: 'Crono Corte', product: 'Agenda', language: 'ES' },
     })

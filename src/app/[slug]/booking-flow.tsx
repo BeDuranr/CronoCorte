@@ -238,23 +238,23 @@ function StepDateTime({
         return
       }
 
-      // Rango ampliado +/-1 dia: las citas se guardan en UTC, y una cita en hora
-      // Chile (UTC-4/-3) puede caer en el dia UTC anterior o siguiente. La
-      // comparacion precisa la hace calculateAvailableSlots con parseISO.
-      const prevStr = format(addDays(date, -1), 'yyyy-MM-dd')
-      const nextStr = format(addDays(date, 1), 'yyyy-MM-dd')
-
-      const { data: existing } = await supabase
-        .from('appointments')
-        .select('starts_at, ends_at')
-        .eq('worker_id', workerId)
-        .gte('starts_at', `${prevStr}T00:00:00`)
-        .lte('starts_at', `${nextStr}T23:59:59`)
-        .not('status', 'eq', 'cancelled')
+      // Consultar horarios ocupados vía endpoint server-side (usa admin client).
+      // Esto evita depender de RLS: un visitante anónimo no puede leer la tabla
+      // appointments directamente, por eso antes veía todos los slots libres.
+      let existing: { starts_at: string; ends_at: string }[] = []
+      try {
+        const res = await fetch(`/api/availability?worker_id=${encodeURIComponent(workerId)}&date=${dateStr}`)
+        if (res.ok) {
+          const json = await res.json()
+          existing = json.occupied ?? []
+        }
+      } catch {
+        existing = []
+      }
 
       const available = calculateAvailableSlots({
         availability: avail,
-        existingAppointments: (existing ?? []).map(a => ({
+        existingAppointments: existing.map(a => ({
           starts_at: a.starts_at,
           ends_at: a.ends_at,
         })),
