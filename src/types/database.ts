@@ -27,6 +27,7 @@ export interface Barbershop {
   agent_name: string
   agent_tone: AgentTone
   agent_prompt_custom: string
+  accent_color: string
   created_at: string
 }
 

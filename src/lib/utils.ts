@@ -27,6 +27,17 @@ export function formatTime(dateStr: string): string {
   return format(parseISO(dateStr), 'HH:mm', { locale: es })
 }
 
+// Convertir color hex (#rrggbb) a canales "r g b" para la variable CSS --red.
+// Devuelve el rojo por defecto si el hex es inválido o falta.
+export function hexToRgbChannels(hex: string | null | undefined): string {
+  const DEFAULT = '230 57 70' // #e63946
+  if (!hex) return DEFAULT
+  const m = /^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim())
+  return m
+    ? `${parseInt(m[1], 16)} ${parseInt(m[2], 16)} ${parseInt(m[3], 16)}`
+    : DEFAULT
+}
+
 // Generar slug desde nombre
 export function toSlug(name: string): string {
   return name

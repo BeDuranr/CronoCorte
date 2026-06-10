@@ -2,6 +2,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import { BookingFlow } from './booking-flow'
 import { ChatWidget } from '@/components/chat-widget'
+import { hexToRgbChannels } from '@/lib/utils'
 import type { Metadata } from 'next'
 
 interface Props {
@@ -30,12 +31,14 @@ export default async function PublicBookingPage({ params }: Props) {
 
   const { data: barbershop } = await supabase
     .from('barbershops')
-    .select('id, name, slug, description, address, phone, instagram, logo_url, transfer_info, agent_name')
+    .select('id, name, slug, description, address, phone, instagram, logo_url, transfer_info, agent_name, accent_color')
     .eq('slug', params.slug)
     .eq('is_active', true)
     .single()
 
   if (!barbershop) notFound()
+
+  const accentRgb = hexToRgbChannels((barbershop as any).accent_color)
 
   // Active services
   const { data: services } = await supabase
@@ -63,6 +66,7 @@ export default async function PublicBookingPage({ params }: Props) {
 
   return (
     <>
+      <style>{`:root { --red: ${accentRgb}; }`}</style>
       <BookingFlow
         barbershop={barbershop as any}
         services={(services as any[]) ?? []}

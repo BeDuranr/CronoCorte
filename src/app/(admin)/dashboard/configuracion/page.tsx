@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Navbar } from '@/components/layout/navbar'
-import { DAYS } from '@/lib/utils'
+import { DAYS, hexToRgbChannels } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { Loader2, Bot, Calendar, Store, Save } from 'lucide-react'
 
@@ -21,6 +22,7 @@ interface ShopConfig {
   agent_name: string | null
   agent_tone: AgentTone
   agent_prompt_custom: string | null
+  accent_color: string
 }
 
 interface AvailabilityRow {
@@ -33,6 +35,7 @@ interface AvailabilityRow {
 
 export default function ConfiguracionPage() {
   const supabase = createClient()
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingSchedule, setSavingSchedule] = useState(false)
@@ -48,11 +51,11 @@ export default function ConfiguracionPage() {
 
     const { data: shopData } = await supabase
       .from('barbershops')
-      .select('id, name, address, phone, description, instagram, transfer_info, agent_enabled, agent_name, agent_tone, agent_prompt_custom')
+      .select('id, name, address, phone, description, instagram, transfer_info, agent_enabled, agent_name, agent_tone, agent_prompt_custom, accent_color')
       .eq('admin_id', user.id)
       .single()
 
-    if (shopData) setShop(shopData as ShopConfig)
+    if (shopData) setShop({ ...shopData, accent_color: shopData.accent_color ?? '#e63946' } as ShopConfig)
 
     // Load availability
     const { data: availData } = await supabase
@@ -85,10 +88,12 @@ export default function ConfiguracionPage() {
           description: shop.description,
           instagram: shop.instagram,
           transfer_info: shop.transfer_info,
+          accent_color: shop.accent_color,
         })
         .eq('id', shop.id)
       if (error) throw error
       toast.success('Perfil actualizado')
+      router.refresh() // Re-ejecuta el layout admin para aplicar el nuevo color de acento
     } catch {
       toast.error('Error al guardar')
     } finally {
@@ -179,6 +184,10 @@ export default function ConfiguracionPage() {
 
   return (
     <>
+      {/* Vista previa en vivo del color de acento. Al estar dentro de la página
+          (hija del layout admin) gana por orden de cascada; React lo desmonta
+          al navegar, así que el preview no persiste si no se guarda. */}
+      <style>{`:root { --red: ${hexToRgbChannels(shop.accent_color)}; }`}</style>
       <Navbar role="admin" />
       <main className="max-w-2xl mx-auto px-4 py-6">
         <h1 className="text-2xl font-bold text-[rgb(var(--fg))] mb-6">Configuración</h1>
@@ -258,6 +267,27 @@ export default function ConfiguracionPage() {
               />
               <p className="text-xs text-[rgb(var(--fg-secondary))] mt-1">
                 Se incluye en el WhatsApp de confirmación de reserva.
+              </p>
+            </div>
+            <div>
+              <label className="label">Color de acento</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={shop.accent_color ?? '#e63946'}
+                  onChange={e => setShop(s => s ? { ...s, accent_color: e.target.value } : s)}
+                  className="w-10 h-10 rounded-lg border border-[rgb(var(--border))] cursor-pointer bg-transparent p-0.5"
+                />
+                <input
+                  className="input"
+                  value={shop.accent_color ?? '#e63946'}
+                  onChange={e => setShop(s => s ? { ...s, accent_color: e.target.value } : s)}
+                  placeholder="#e63946"
+                  maxLength={7}
+                />
+              </div>
+              <p className="text-xs text-[rgb(var(--fg-secondary))] mt-1">
+                Color que verán los clientes en tu página de reservas.
               </p>
             </div>
             <button onClick={saveProfile} disabled={saving} className="btn-primary flex items-center gap-2 justify-center">
