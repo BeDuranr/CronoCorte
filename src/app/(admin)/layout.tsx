@@ -1,5 +1,5 @@
 import { createServerClient } from '@/lib/supabase/server'
-import { hexToRgbChannels } from '@/lib/utils'
+import { accentColorVars } from '@/lib/utils'
 
 // Layout del panel de administración. Carga el color de acento de la barbería
 // del admin logueado e inyecta la variable CSS --red para que todo el panel
@@ -19,11 +19,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     accentColor = barbershop?.accent_color ?? null
   }
 
-  const accentRgb = hexToRgbChannels(accentColor)
-
   return (
     <>
-      <style>{`:root { --red: ${accentRgb}; }`}</style>
+      <style>{`:root { ${accentColorVars(accentColor)} }`}</style>
       {children}
     </>
   )

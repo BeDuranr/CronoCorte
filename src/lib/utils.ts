@@ -27,15 +27,26 @@ export function formatTime(dateStr: string): string {
   return format(parseISO(dateStr), 'HH:mm', { locale: es })
 }
 
-// Convertir color hex (#rrggbb) a canales "r g b" para la variable CSS --red.
-// Devuelve el rojo por defecto si el hex es inválido o falta.
-export function hexToRgbChannels(hex: string | null | undefined): string {
-  const DEFAULT = '230 57 70' // #e63946
+// Parsear color hex (#rrggbb) a canales [r, g, b]. Devuelve el rojo por
+// defecto (#e63946) si el hex es inválido o falta.
+function parseHex(hex: string | null | undefined): [number, number, number] {
+  const DEFAULT: [number, number, number] = [230, 57, 70] // #e63946
   if (!hex) return DEFAULT
   const m = /^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim())
   return m
-    ? `${parseInt(m[1], 16)} ${parseInt(m[2], 16)} ${parseInt(m[3], 16)}`
+    ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)]
     : DEFAULT
+}
+
+// Generar las declaraciones de variables CSS del color de acento a partir de un
+// hex. Devuelve --red (color base), --red-dark (hover, ~18% más oscuro) y
+// --red-light (~30% hacia el blanco), en formato "r g b" para usarse con
+// rgb(var(--red) / <alpha-value>) en Tailwind.
+export function accentColorVars(hex: string | null | undefined): string {
+  const [r, g, b] = parseHex(hex)
+  const dark = [r, g, b].map(c => Math.round(c * 0.82)).join(' ')
+  const light = [r, g, b].map(c => Math.round(c + (255 - c) * 0.3)).join(' ')
+  return `--red: ${r} ${g} ${b}; --red-dark: ${dark}; --red-light: ${light};`
 }
 
 // Generar slug desde nombre

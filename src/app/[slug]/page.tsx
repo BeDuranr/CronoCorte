@@ -2,7 +2,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import { BookingFlow } from './booking-flow'
 import { ChatWidget } from '@/components/chat-widget'
-import { hexToRgbChannels } from '@/lib/utils'
+import { accentColorVars } from '@/lib/utils'
 import type { Metadata } from 'next'
 
 interface Props {
@@ -38,7 +38,7 @@ export default async function PublicBookingPage({ params }: Props) {
 
   if (!barbershop) notFound()
 
-  const accentRgb = hexToRgbChannels((barbershop as any).accent_color)
+  const accentVars = accentColorVars((barbershop as any).accent_color)
 
   // Active services
   const { data: services } = await supabase
@@ -66,7 +66,7 @@ export default async function PublicBookingPage({ params }: Props) {
 
   return (
     <>
-      <style>{`:root { --red: ${accentRgb}; }`}</style>
+      <style>{`:root { ${accentVars} }`}</style>
       <BookingFlow
         barbershop={barbershop as any}
         services={(services as any[]) ?? []}

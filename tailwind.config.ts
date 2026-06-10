@@ -11,10 +11,13 @@ const config: Config = {
     extend: {
       colors: {
         // Paleta Crono Corte — Estilo 3 Minimal
+        // El color de acento es personalizable por barbería: estas variables CSS
+        // se inyectan en runtime (ver accentColorVars en lib/utils). El valor por
+        // defecto vive en globals.css (#e63946).
         brand: {
-          red:    '#e63946',
-          'red-dark': '#c8303d',
-          'red-light': '#ff6b74',
+          red:         'rgb(var(--red) / <alpha-value>)',
+          'red-dark':  'rgb(var(--red-dark) / <alpha-value>)',
+          'red-light': 'rgb(var(--red-light) / <alpha-value>)',
         },
       },
       fontFamily: {

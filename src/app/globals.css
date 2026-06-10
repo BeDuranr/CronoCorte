@@ -10,6 +10,8 @@
     --fg-secondary: 100 100 100;
     --border: 230 230 230;
     --red: 230 57 70;
+    --red-dark: 189 47 57;
+    --red-light: 244 116 126;
   }
 
   .dark {
@@ -19,6 +21,8 @@
     --fg-secondary: 130 130 130;
     --border: 32 32 32;
     --red: 230 57 70;
+    --red-dark: 189 47 57;
+    --red-light: 244 116 126;
   }
 
   * {

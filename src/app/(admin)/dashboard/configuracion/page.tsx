@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Navbar } from '@/components/layout/navbar'
-import { DAYS, hexToRgbChannels } from '@/lib/utils'
+import { DAYS, accentColorVars } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { Loader2, Bot, Calendar, Store, Save } from 'lucide-react'
 
@@ -187,7 +187,7 @@ export default function ConfiguracionPage() {
       {/* Vista previa en vivo del color de acento. Al estar dentro de la página
           (hija del layout admin) gana por orden de cascada; React lo desmonta
           al navegar, así que el preview no persiste si no se guarda. */}
-      <style>{`:root { --red: ${hexToRgbChannels(shop.accent_color)}; }`}</style>
+      <style>{`:root { ${accentColorVars(shop.accent_color)} }`}</style>
       <Navbar role="admin" />
       <main className="max-w-2xl mx-auto px-4 py-6">
         <h1 className="text-2xl font-bold text-[rgb(var(--fg))] mb-6">Configuración</h1>
