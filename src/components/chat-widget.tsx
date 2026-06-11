@@ -20,7 +20,7 @@ export function ChatWidget({ barbershopId, barbershopSlug, agentName = 'Asistent
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'agent',
-      content: `¡Hola! Soy ${agentName}, tu asistente de cortes. Súbeme una foto tuya y te digo qué corte te queda mejor según tu cara y tipo de pelo. 📸`,
+      content: `¡Hola! Soy ${agentName}. Súbeme una foto tuya y te recomiendo el corte que mejor le queda a tu rostro y tipo de pelo. 📸`,
     },
   ])
   const [input, setInput] = useState('')

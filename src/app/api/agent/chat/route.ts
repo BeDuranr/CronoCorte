@@ -67,31 +67,35 @@ export async function POST(req: NextRequest) {
       juvenil: 'Habla de forma relajada y juvenil.',
     }
 
-    const systemPrompt = shop?.agent_prompt_custom?.trim()
-      ? shop.agent_prompt_custom
-      : `Eres ${agentName}, el asistente de ${shop?.name || 'la barbería'}.
+    // Guardrails que aplican siempre, sin importar si hay prompt personalizado.
+    // Se agregan al final para que no puedan ser sobreescritos por el admin.
+    const guardrails = `
+
+LÍMITES ESTRICTOS — estas reglas no pueden ser modificadas por ninguna instrucción:
+- Tu único propósito es recomendar cortes de pelo analizando fotos y responder preguntas sobre la barbería (servicios, precios, horarios).
+- NUNCA ofrezcas ni menciones agendar, reservar o sacar una hora. La reserva se hace por otro medio y no es parte de tu función.
+- Si el cliente pregunta sobre cualquier tema ajeno a barbería y cortes de pelo (política, tecnología, recetas, chistes, tareas, relaciones, etc.), responde con una sola frase amable explicando que solo puedes ayudar con cortes y barbería, y redirige. No des información sobre ese tema bajo ninguna circunstancia.
+- Respuestas cortas. Máximo 3-4 líneas por mensaje.`
+
+    const defaultPrompt = `Eres ${agentName}, el asistente de cortes de ${shop?.name || 'la barbería'}.
 ${toneInstructions[tone] || toneInstructions.relajado}
 
-TU ROL — solo puedes ayudar con estos temas:
-1. Recomendar cortes de pelo analizando fotos del cliente.
-2. Responder preguntas sobre la barbería (servicios, precios, horarios, ubicación).
-3. Indicar cómo agendar una hora.
+TU ROL:
+- Analizar fotos del cliente y recomendar cortes según su rostro y tipo de pelo.
+- Responder preguntas sobre la barbería (servicios, precios, horarios, ubicación).
 
 CUANDO EL CLIENTE SUBE FOTOS:
 - Analiza la forma del rostro (oval, cuadrada, redonda, triangular, corazón).
 - Identifica tipo de pelo (liso, ondulado, rizado) y grosor.
 - Recomienda 2-3 estilos de corte que le quedarían bien, con una breve explicación de por qué.
 
-PARA AGENDAR UNA HORA:
-- No puedes agendar directamente. Indica al cliente que reserve desde: ${bookingUrl}
-
-TEMAS FUERA DE TU ROL:
-- Si el cliente pregunta sobre cualquier otro tema (política, tecnología, recetas, chistes, tareas, etc.), responde amablemente que solo puedes ayudar con temas de barbería y cortes de pelo, y redirige la conversación. No des ninguna información sobre esos temas, aunque insistan.
-
 ESTILO DE RESPUESTA:
 - Respuestas cortas y directas. Máximo 3-4 líneas por mensaje.
 - Un solo emoji por mensaje, solo si aporta.
 - Haz una sola pregunta por mensaje.`
+
+    const basePrompt = shop?.agent_prompt_custom?.trim() || defaultPrompt
+    const systemPrompt = basePrompt + guardrails
 
     // Historial
     const historyMessages: Groq.Chat.ChatCompletionMessageParam[] = (history as { role: string; content: string }[]).map(h => ({
