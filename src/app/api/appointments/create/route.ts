@@ -23,13 +23,13 @@ export async function POST(req: NextRequest) {
       cancel_token,
       // Formato nuevo (grupal):
       blocks,
-      total_amount,
       // Formato antiguo (una sola cita) — compatibilidad hacia atrás:
       service_id,
       starts_at,
       ends_at,
       notes,
     } = body
+    // total_amount se ignora del cliente — se calcula en el servidor
 
     // ── Normalizar a un array de bloques ──────────────────────────────
     // Si viene `blocks` usamos ese; si no, construimos uno desde los campos sueltos.
@@ -58,6 +58,41 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = createAdminClient()
+
+    // ── Calcular total_amount desde la DB (ignorar valor del cliente) ──────
+    const serviceIds = Array.from(new Set(normalizedBlocks.map(b => b.service_id)))
+    const { data: dbServices, error: svcError } = await supabase
+      .from('services')
+      .select('id, price, barbershop_id')
+      .in('id', serviceIds)
+
+    if (svcError || !dbServices || dbServices.length !== serviceIds.length) {
+      return NextResponse.json({ error: 'Servicio no encontrado' }, { status: 400 })
+    }
+
+    // Validar que todos los servicios pertenezcan a la barbería correcta
+    const wrongShop = dbServices.some(s => s.barbershop_id !== barbershop_id)
+    if (wrongShop) {
+      return NextResponse.json({ error: 'Servicio no pertenece a esta barbería' }, { status: 400 })
+    }
+
+    // Validar que el worker pertenezca a la barbería
+    const { data: dbWorker } = await supabase
+      .from('workers')
+      .select('id')
+      .eq('id', worker_id)
+      .eq('barbershop_id', barbershop_id)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (!dbWorker) {
+      return NextResponse.json({ error: 'Barbero no disponible' }, { status: 400 })
+    }
+
+    const priceMap = new Map(dbServices.map(s => [s.id, Number(s.price)]))
+    const calculatedTotal = normalizedBlocks.reduce(
+      (sum, b) => sum + (priceMap.get(b.service_id) ?? 0), 0
+    )
 
     // ── Rate limiting anti-spam: máximo de citas pendientes sin pagar por teléfono ──
     // Un cliente real no necesita muchas reservas sin pagar a la vez. Esto frena
@@ -131,9 +166,10 @@ export async function POST(req: NextRequest) {
       starts_at: b.starts_at,
       ends_at: b.ends_at,
       status: 'pending_payment' as const,
-      cancel_token: idx === 0 ? sharedToken : `${sharedToken}-${idx}`,
+      // Token único por fila (no derivable desde el token principal)
+      cancel_token: idx === 0 ? sharedToken : crypto.randomUUID().replace(/-/g, ''),
       booking_group_id: groupId,
-      total_amount: total_amount ?? null,
+      total_amount: calculatedTotal,
     }))
 
     const { data, error } = await supabase
@@ -142,6 +178,13 @@ export async function POST(req: NextRequest) {
       .select('id, starts_at')
 
     if (error) {
+      // Constraint de exclusión: doble reserva concurrente
+      if (error.code === '23P01') {
+        return NextResponse.json(
+          { error: 'Uno de los horarios ya fue reservado. Por favor elige otro.' },
+          { status: 409 }
+        )
+      }
       console.error('Error creating appointment(s):', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }

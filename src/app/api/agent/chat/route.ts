@@ -4,11 +4,35 @@ import Groq from 'groq-sdk'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
 
+// Rate limit simple en memoria: 20 req/min por IP.
+// En Vercel cada instancia mantiene su propio Map, lo que es suficiente
+// para frenar bucles abusivos sin dependencias externas.
+const rlMap = new Map<string, { count: number; resetAt: number }>()
+const RL_MAX = 20
+const RL_WINDOW_MS = 60_000
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now()
+  const entry = rlMap.get(ip)
+  if (!entry || now > entry.resetAt) {
+    rlMap.set(ip, { count: 1, resetAt: now + RL_WINDOW_MS })
+    return true
+  }
+  if (entry.count >= RL_MAX) return false
+  entry.count++
+  return true
+}
+
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
 const TEXT_MODEL   = 'llama-3.3-70b-versatile'
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+    if (!checkRateLimit(ip)) {
+      return NextResponse.json({ reply: 'Demasiadas solicitudes. Intenta en un momento.' }, { status: 429 })
+    }
+
     const { message, images, history = [], barbershop_id, barbershop_slug } = await req.json()
 
     if (!barbershop_id || typeof barbershop_id !== 'string') {

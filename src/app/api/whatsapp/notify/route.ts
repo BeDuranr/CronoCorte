@@ -55,9 +55,9 @@ async function sendWhatsAppTemplate(
 
 export async function POST(req: NextRequest) {
   try {
-    const { appointment_id } = await req.json()
-    if (!appointment_id) {
-      return NextResponse.json({ message: 'appointment_id requerido' }, { status: 400 })
+    const { appointment_id, cancel_token } = await req.json()
+    if (!appointment_id || !cancel_token) {
+      return NextResponse.json({ message: 'appointment_id y cancel_token requeridos' }, { status: 400 })
     }
 
     if (!TEMPLATE_CONFIRMACION) {
@@ -81,6 +81,11 @@ export async function POST(req: NextRequest) {
 
     if (error || !appt) {
       return NextResponse.json({ message: 'Cita no encontrada' }, { status: 404 })
+    }
+
+    // Verificar cancel_token como prueba de posesión (evita spam desde el browser)
+    if (appt.cancel_token !== cancel_token) {
+      return NextResponse.json({ message: 'No autorizado' }, { status: 403 })
     }
 
     const shop = appt.barbershops as any

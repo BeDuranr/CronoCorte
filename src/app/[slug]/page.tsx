@@ -5,6 +5,10 @@ import { ChatWidget } from '@/components/chat-widget'
 import { accentColorVars } from '@/lib/utils'
 import type { Metadata } from 'next'
 
+// Revalidar cada 5 minutos: servicios, workers y horarios cambian poco.
+// La reserva en sí va por API route, no depende de este caché.
+export const revalidate = 300
+
 interface Props {
   params: { slug: string }
 }

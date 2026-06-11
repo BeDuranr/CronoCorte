@@ -77,35 +77,31 @@ export async function GET(req: NextRequest) {
     .gte('starts_at', window24hStart.toISOString())
     .lte('starts_at', window24hEnd.toISOString())
 
-  for (const appt of appts24h ?? []) {
-    const shop = appt.barbershops as any
-    const service = appt.services as any
-    const worker = appt.workers as any
-    const date = new Date(appt.starts_at)
-    const dateStr = date.toLocaleDateString('es-CL', {
-      timeZone: 'America/Santiago', weekday: 'long', day: 'numeric', month: 'long',
+  const results24h = await Promise.allSettled(
+    (appts24h ?? []).map(async appt => {
+      const shop = appt.barbershops as any
+      const service = appt.services as any
+      const date = new Date(appt.starts_at)
+      const dateStr = date.toLocaleDateString('es-CL', {
+        timeZone: 'America/Santiago', weekday: 'long', day: 'numeric', month: 'long',
+      })
+      const timeStr = date.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hour12: false })
+      const vars = {
+        '1': appt.client_name,
+        '2': shop?.name ?? 'la barbería',
+        '3': dateStr,
+        '4': timeStr,
+        '5': service?.name ?? 'tu servicio',
+      }
+      const ok = await sendWhatsAppTemplate(appt.client_phone, TEMPLATE_RECORDATORIO_24H, vars)
+      if (ok) {
+        await supabase.from('appointments').update({ reminder_24h_sent: true }).eq('id', appt.id)
+        return true
+      }
+      return false
     })
-    const timeStr = date.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hour12: false })
-
-    // Plantilla recordatorio_24h:
-    // {{1}} nombre, {{2}} barbería, {{3}} fecha, {{4}} hora, {{5}} servicio
-    const vars = {
-      '1': appt.client_name,
-      '2': shop?.name ?? 'la barbería',
-      '3': dateStr,
-      '4': timeStr,
-      '5': service?.name ?? 'tu servicio',
-    }
-
-    const ok = await sendWhatsAppTemplate(appt.client_phone, TEMPLATE_RECORDATORIO_24H, vars)
-    if (ok) {
-      await supabase
-        .from('appointments')
-        .update({ reminder_24h_sent: true })
-        .eq('id', appt.id)
-      sent24h++
-    }
-  }
+  )
+  sent24h = results24h.filter(r => r.status === 'fulfilled' && r.value === true).length
 
   // ─── 1-hour reminders ────────────────────────────────────────────────────────
   const window1hStart = new Date(now)
@@ -126,31 +122,27 @@ export async function GET(req: NextRequest) {
     .gte('starts_at', window1hStart.toISOString())
     .lte('starts_at', window1hEnd.toISOString())
 
-  for (const appt of appts1h ?? []) {
-    const shop = appt.barbershops as any
-    const service = appt.services as any
-    const worker = appt.workers as any
-    const date = new Date(appt.starts_at)
-    const timeStr = date.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hour12: false })
-
-    // Plantilla recordatorio_1h:
-    // {{1}} nombre, {{2}} barbería, {{3}} hora, {{4}} dirección
-    const vars = {
-      '1': appt.client_name,
-      '2': shop?.name ?? 'la barbería',
-      '3': timeStr,
-      '4': shop?.address || shop?.name || 'la barbería',
-    }
-
-    const ok = await sendWhatsAppTemplate(appt.client_phone, TEMPLATE_RECORDATORIO_1H, vars)
-    if (ok) {
-      await supabase
-        .from('appointments')
-        .update({ reminder_1h_sent: true })
-        .eq('id', appt.id)
-      sent1h++
-    }
-  }
+  const results1h = await Promise.allSettled(
+    (appts1h ?? []).map(async appt => {
+      const shop = appt.barbershops as any
+      const service = appt.services as any
+      const date = new Date(appt.starts_at)
+      const timeStr = date.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hour12: false })
+      const vars = {
+        '1': appt.client_name,
+        '2': shop?.name ?? 'la barbería',
+        '3': timeStr,
+        '4': shop?.address || shop?.name || 'la barbería',
+      }
+      const ok = await sendWhatsAppTemplate(appt.client_phone, TEMPLATE_RECORDATORIO_1H, vars)
+      if (ok) {
+        await supabase.from('appointments').update({ reminder_1h_sent: true }).eq('id', appt.id)
+        return true
+      }
+      return false
+    })
+  )
+  sent1h = results1h.filter(r => r.status === 'fulfilled' && r.value === true).length
 
   // ─── Auto-cerrar citas ────────────────────────────────────────────────────────
   // pending_payment con más de 30 min desde creación → cancelled (venció el plazo de pago)

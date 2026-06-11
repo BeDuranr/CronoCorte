@@ -474,7 +474,7 @@ function StepConfirm({
       fetch('/api/whatsapp/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appointment_id: data.id }),
+        body: JSON.stringify({ appointment_id: data.id, cancel_token: cancelToken }),
       }).catch(() => {})
 
       onSuccess(data.id, cancelToken)
