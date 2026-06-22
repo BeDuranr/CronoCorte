@@ -6,10 +6,10 @@ export const metadata: Metadata = { title: 'Iniciar sesión' }
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex flex-col items-center px-4 bg-[rgb(var(--bg))] pt-20">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-[rgb(var(--bg))] py-10 sm:py-0">
 
       {/* Logo centrado arriba */}
-      <div className="mb-14 flex justify-center">
+      <div className="mb-10 flex justify-center">
         <CronoLogo size="lg" />
       </div>
 
@@ -24,7 +24,7 @@ export default function LoginPage() {
         <p className="mt-6 text-center text-sm text-[rgb(var(--fg-secondary))]">
           ¿No tienes cuenta?{' '}
           <a href="/register" className="text-brand-red hover:text-brand-red-dark font-medium transition-colors">
-            Registrar mi barbería
+            Crea tu barbería gratis
           </a>
         </p>
       </div>

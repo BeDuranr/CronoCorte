@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Navbar } from '@/components/layout/navbar'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, Check, X, Loader2, Mail, Link as LinkIcon, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Check, X, Loader2, Mail, Link as LinkIcon, Trash2, RefreshCw } from 'lucide-react'
 
 interface Worker {
   id: string
@@ -13,6 +13,99 @@ interface Worker {
   is_active: boolean
   calendar_token: string | null
   user_id: string | null
+}
+
+// ── Toggle switch ─────────────────────────────────────────────────────────────
+function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
+  return (
+    <button
+      onClick={onChange}
+      className={`w-9 h-5 rounded-full transition-all relative shrink-0 ${on ? 'bg-brand-red' : 'bg-[rgb(var(--fg-secondary))]/20'}`}
+    >
+      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${on ? 'left-4' : 'left-0.5'}`} />
+    </button>
+  )
+}
+
+// ── Skeleton de carga ─────────────────────────────────────────────────────────
+function BarberosSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 animate-pulse">
+      {[1, 2, 3].map(i => (
+        <div key={i} className="card p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-[rgb(var(--fg-secondary))]/15 shrink-0" />
+            <div className="flex-1 space-y-2 pt-0.5">
+              <div className="h-4 w-32 rounded-md bg-[rgb(var(--fg-secondary))]/15" />
+              <div className="h-3 w-20 rounded-md bg-[rgb(var(--fg-secondary))]/10" />
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="w-9 h-5 rounded-full bg-[rgb(var(--fg-secondary))]/15" />
+              <div className="w-7 h-7 rounded-lg bg-[rgb(var(--fg-secondary))]/10" />
+              <div className="w-7 h-7 rounded-lg bg-[rgb(var(--fg-secondary))]/10" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Modal de confirmación genérico ───────────────────────────────────────────
+function ConfirmModal({
+  title,
+  message,
+  confirmLabel = 'Eliminar',
+  onConfirm,
+  onClose,
+}: {
+  title: string
+  message: string
+  confirmLabel?: string
+  onConfirm: () => Promise<void>
+  onClose: () => void
+}) {
+  const [loading, setLoading] = useState(false)
+
+  const handleConfirm = async () => {
+    setLoading(true)
+    await onConfirm()
+    setLoading(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="card p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <b className="text-sm text-[rgb(var(--fg))]">{title}</b>
+          <button onClick={onClose} className="p-1 rounded hover:bg-[rgb(var(--bg-secondary))] text-[rgb(var(--fg-secondary))]">
+            <X size={14} />
+          </button>
+        </div>
+        <p className="text-xs text-[rgb(var(--fg-secondary))] mb-5">{message}</p>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="btn-secondary text-sm py-1.5 px-4">Cancelar</button>
+          <button
+            onClick={handleConfirm}
+            disabled={loading}
+            className="btn-primary text-sm py-1.5 px-4 bg-brand-red hover:bg-[#bd2f39]"
+          >
+            {loading ? <Loader2 size={13} className="animate-spin" /> : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Chip de estado invitación ─────────────────────────────────────────────────
+function InviteStatus({ hasAccount }: { hasAccount: boolean }) {
+  return (
+    <span className={`flex items-center gap-1 text-xs font-medium ${hasAccount ? 'text-green-500' : 'text-yellow-500'}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${hasAccount ? 'bg-green-500' : 'bg-yellow-500'}`} />
+      {hasAccount ? 'Activo' : 'Invitado'}
+    </span>
+  )
 }
 
 export default function BarberosPage() {
@@ -25,17 +118,15 @@ export default function BarberosPage() {
   const [addLoading, setAddLoading] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ name: '', specialty: '' })
+  const [resendingId, setResendingId] = useState<string | null>(null)
+  const [deleteWorker, setDeleteWorker] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    const { data: shop } = await supabase
-      .from('barbershops')
-      .select('id')
-      .eq('admin_id', user.id)
-      .single()
+    const { data: shop } = await supabase.from('barbershops').select('id').eq('admin_id', user.id).single()
     if (!shop) return
     setShopId(shop.id)
     const { data } = await supabase
@@ -63,10 +154,7 @@ export default function BarberosPage() {
           barbershop_id: shopId,
         }),
       })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.message)
-      }
+      if (!res.ok) { const err = await res.json(); throw new Error(err.message) }
       toast.success(`Invitación enviada a ${newWorker.email}`)
       setNewWorker({ name: '', email: '', specialty: '' })
       setAdding(false)
@@ -78,30 +166,47 @@ export default function BarberosPage() {
     }
   }
 
+  const handleResendInvite = async (worker: Worker) => {
+    setResendingId(worker.id)
+    try {
+      const res = await fetch('/api/workers/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: worker.name,
+          email: '', // El API debería buscar el email del usuario existente o re-crear
+          specialty: worker.specialty,
+          barbershop_id: shopId,
+          worker_id: worker.id, // hint para reenvío
+        }),
+      })
+      if (!res.ok) throw new Error('Error al reenviar')
+      toast.success('Invitación reenviada')
+    } catch {
+      toast.error('No se pudo reenviar la invitación')
+    } finally {
+      setResendingId(null)
+    }
+  }
+
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`¿Eliminar a ${name}? Esta acción no se puede deshacer y borrará su cuenta de acceso.`)) return
     try {
       const res = await fetch('/api/workers/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ worker_id: id }),
       })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.message)
-      }
+      if (!res.ok) { const err = await res.json(); throw new Error(err.message) }
       toast.success(`${name} eliminado`)
       setWorkers(w => w.filter(wk => wk.id !== id))
+      setDeleteWorker(null)
     } catch (err: any) {
       toast.error(err.message || 'Error al eliminar')
     }
   }
 
   const handleToggleActive = async (id: string, current: boolean) => {
-    const { error } = await supabase
-      .from('workers')
-      .update({ is_active: !current })
-      .eq('id', id)
+    const { error } = await supabase.from('workers').update({ is_active: !current }).eq('id', id)
     if (error) return toast.error('Error al actualizar')
     setWorkers(w => w.map(wk => wk.id === id ? { ...wk, is_active: !current } : wk))
     toast.success(!current ? 'Barbero activado' : 'Barbero desactivado')
@@ -120,18 +225,29 @@ export default function BarberosPage() {
 
   const calendarUrl = (token: string | null) =>
     token
-      ? `https://${process.env.NEXT_PUBLIC_APP_URL?.replace('https://', '')}/api/calendar/${token}`
+      ? `webcal://${process.env.NEXT_PUBLIC_APP_URL?.replace('https://', '')}/api/calendar/${token}`
       : null
+
+  const activeCount = workers.filter(w => w.is_active).length
 
   return (
     <>
+      {deleteWorker && (
+        <ConfirmModal
+          title={`Eliminar a ${deleteWorker.name}`}
+          message="Esta acción no se puede deshacer. El barbero perderá acceso a la plataforma."
+          confirmLabel="Eliminar"
+          onConfirm={() => handleDelete(deleteWorker.id, deleteWorker.name)}
+          onClose={() => setDeleteWorker(null)}
+        />
+      )}
       <Navbar role="admin" />
-      <main className="max-w-2xl mx-auto px-4 py-6">
+      <main className="max-w-2xl md:max-w-3xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-[rgb(var(--fg))]">Barberos</h1>
             <p className="text-sm text-[rgb(var(--fg-secondary))] mt-0.5">
-              {workers.filter(w => w.is_active).length} activos
+              {activeCount} activo{activeCount !== 1 ? 's' : ''} · {workers.length} total
             </p>
           </div>
           <button onClick={() => setAdding(true)} className="btn-primary flex items-center gap-2">
@@ -140,11 +256,10 @@ export default function BarberosPage() {
         </div>
 
         {loading ? (
-          <div className="text-center py-10">
-            <Loader2 className="animate-spin text-brand-red mx-auto" size={24} />
-          </div>
+          <BarberosSkeleton />
         ) : (
           <div className="flex flex-col gap-3">
+            {/* Formulario invitar */}
             {adding && (
               <div className="card p-4 border-brand-red/30 flex flex-col gap-3">
                 <h3 className="text-sm font-semibold">Invitar barbero</h3>
@@ -170,9 +285,9 @@ export default function BarberosPage() {
                 />
                 <div className="flex gap-2">
                   <button onClick={handleAdd} disabled={addLoading} className="btn-primary py-1.5 px-4 text-sm">
-                    {addLoading ? <Loader2 size={14} className="animate-spin" /> : (
-                      <span className="flex items-center gap-1"><Mail size={13} /> Enviar invitación</span>
-                    )}
+                    {addLoading
+                      ? <Loader2 size={14} className="animate-spin" />
+                      : <span className="flex items-center gap-1"><Mail size={13} /> Enviar invitación</span>}
                   </button>
                   <button onClick={() => setAdding(false)} className="btn-secondary py-1.5 px-4 text-sm">
                     Cancelar
@@ -187,7 +302,10 @@ export default function BarberosPage() {
               </div>
             ) : (
               workers.map(worker => (
-                <div key={worker.id} className={`card p-4 ${!worker.is_active ? 'opacity-60' : ''}`}>
+                <div
+                  key={worker.id}
+                  className={`card p-4 ${!worker.is_active ? 'opacity-60' : ''} ${!worker.user_id ? 'border-dashed' : ''}`}
+                >
                   {editId === worker.id ? (
                     <div className="flex flex-col gap-2">
                       <input
@@ -213,56 +331,74 @@ export default function BarberosPage() {
                   ) : (
                     <>
                       <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-full bg-brand-red/10 text-brand-red flex items-center justify-center text-sm font-bold shrink-0">
+                        {/* Avatar */}
+                        <div className={`w-10 h-10 rounded-full bg-brand-red/10 text-brand-red flex items-center justify-center text-sm font-bold shrink-0 ${!worker.user_id ? 'opacity-50' : ''}`}>
                           {worker.name.charAt(0).toUpperCase()}
                         </div>
+
+                        {/* Info */}
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-[rgb(var(--fg))]">{worker.name}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-[rgb(var(--fg))]">{worker.name}</p>
+                            <InviteStatus hasAccount={!!worker.user_id} />
+                          </div>
                           {worker.specialty && (
                             <p className="text-xs text-[rgb(var(--fg-secondary))]">{worker.specialty}</p>
                           )}
-                          <p className="text-xs text-[rgb(var(--fg-secondary))]/60 mt-0.5">
-                            {worker.user_id ? '✓ Cuenta activa' : '⏳ Invitación pendiente'}
-                          </p>
+                          {/* Invitación pendiente: acciones */}
+                          {!worker.user_id && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <button
+                                onClick={() => handleResendInvite(worker)}
+                                disabled={resendingId === worker.id}
+                                className="flex items-center gap-1 text-xs border border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg-secondary))] px-2.5 py-1 rounded-lg hover:border-[rgb(var(--fg-secondary))]/40 transition-all"
+                              >
+                                {resendingId === worker.id
+                                  ? <Loader2 size={10} className="animate-spin" />
+                                  : <RefreshCw size={10} />}
+                                Reenviar
+                              </button>
+                              <button
+                                onClick={() => setDeleteWorker({ id: worker.id, name: worker.name })}
+                                className="flex items-center gap-1 text-xs border border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg-secondary))] px-2.5 py-1 rounded-lg hover:border-brand-red/40 hover:text-brand-red transition-all"
+                              >
+                                <X size={10} /> Revocar
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => handleToggleActive(worker.id, worker.is_active)}
-                            className={`text-xs px-2 py-0.5 rounded-full border transition-all ${
-                              worker.is_active
-                                ? 'border-green-500/30 text-green-500 hover:bg-green-500/10'
-                                : 'border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg-secondary))]'
-                            }`}
-                          >
-                            {worker.is_active ? 'Activo' : 'Inactivo'}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditId(worker.id)
-                              setEditForm({ name: worker.name, specialty: worker.specialty ?? '' })
-                            }}
-                            className="p-1.5 rounded-lg text-[rgb(var(--fg-secondary))] hover:bg-[rgb(var(--bg-secondary))] transition-all"
-                          >
-                            <Pencil size={13} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(worker.id, worker.name)}
-                            className="p-1.5 rounded-lg text-[rgb(var(--fg-secondary))] hover:bg-brand-red/10 hover:text-brand-red transition-all"
-                            title="Eliminar barbero"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
+
+                        {/* Controles (solo si tiene cuenta) */}
+                        {worker.user_id && (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Toggle on={worker.is_active} onChange={() => handleToggleActive(worker.id, worker.is_active)} />
+                            <button
+                              onClick={() => {
+                                setEditId(worker.id)
+                                setEditForm({ name: worker.name, specialty: worker.specialty ?? '' })
+                              }}
+                              className="p-1.5 rounded-lg text-[rgb(var(--fg-secondary))] hover:bg-[rgb(var(--bg-secondary))] transition-all"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              onClick={() => setDeleteWorker({ id: worker.id, name: worker.name })}
+                              className="p-1.5 rounded-lg text-[rgb(var(--fg-secondary))] hover:bg-brand-red/10 hover:text-brand-red transition-all"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        )}
                       </div>
 
+                      {/* iCal link */}
                       {worker.calendar_token && (
-                        <div className="mt-3 pt-3 border-t border-[rgb(var(--fg-secondary))]/10">
-                          <p className="text-xs text-[rgb(var(--fg-secondary))] mb-1.5">Link de calendario:</p>
+                        <div className="mt-3 pt-3 border-t border-[rgb(var(--fg-secondary))]/10 flex items-center gap-2">
                           <a
-                            href={`webcal://${process.env.NEXT_PUBLIC_APP_URL?.replace('https://', '')}/api/calendar/${worker.calendar_token}`}
+                            href={calendarUrl(worker.calendar_token) ?? '#'}
                             className="text-xs text-brand-red flex items-center gap-1 hover:underline"
                           >
-                            <LinkIcon size={10} /> Suscribir a calendario
+                            <LinkIcon size={10} /> Suscribir a calendario (iCal)
                           </a>
                         </div>
                       )}
