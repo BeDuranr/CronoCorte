@@ -143,7 +143,7 @@ export function ChatWidget({ barbershopId, barbershopSlug, agentName = 'Asistent
           {/* Header */}
           <div className="px-4 py-3 bg-brand-red flex items-center gap-3 shrink-0">
             <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-              <Scissors size={15} className="text-white" />
+              <Brain size={15} className="text-white" />
             </div>
             <div>
               <p className="text-white font-semibold text-sm leading-tight">{agentName}</p>
