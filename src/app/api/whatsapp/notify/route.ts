@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     const { data: appt, error } = await supabase
       .from('appointments')
       .select(`
-        id, client_name, client_phone, starts_at, ends_at, cancel_token, booking_group_id, total_amount,
+        id, client_name, client_phone, starts_at, ends_at, cancel_token, booking_group_id, total_amount, notes,
         services(name, price, duration_minutes),
         workers(name),
         barbershops(name, transfer_info, phone)
@@ -145,7 +145,13 @@ export async function POST(req: NextRequest) {
       detalle = `${lineas.join(' | ')} (${dateStr}, con ${worker?.name})`
     } else {
       const timeStr = date.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit', hour12: false })
-      detalle = `${service?.name} el ${dateStr} a las ${timeStr} con ${worker?.name}`
+      // Extraer servicios adicionales del campo notes (ej: "Servicios adicionales: Barba")
+      const notesStr = (appt as any).notes as string | null ?? ''
+      const extraMatch = notesStr.match(/Servicios adicionales: (.+)/)
+      const serviceLabel = extraMatch
+        ? `${service?.name} y ${extraMatch[1]}`
+        : service?.name
+      detalle = `${serviceLabel} el ${dateStr} a las ${timeStr} con ${worker?.name}`
     }
 
     // Datos de transferencia (variable {{5}}). Si no hay, mensaje genérico.

@@ -5,6 +5,7 @@ import crypto from 'crypto'
 // Un "bloque" representa a una persona dentro de la reserva.
 interface BookingBlock {
   service_id: string
+  extra_service_ids?: string[] // servicios adicionales para la misma persona (mismo bloque)
   starts_at: string
   ends_at: string
   person_name?: string // nombre opcional del acompañante; si no, se deriva del titular
@@ -60,7 +61,11 @@ export async function POST(req: NextRequest) {
     const supabase = createAdminClient()
 
     // ── Calcular total_amount desde la DB (ignorar valor del cliente) ──────
-    const serviceIds = Array.from(new Set(normalizedBlocks.map(b => b.service_id)))
+    // Incluir tanto el servicio primario como los extras de cada bloque
+    const serviceIds = Array.from(new Set([
+      ...normalizedBlocks.map(b => b.service_id),
+      ...normalizedBlocks.flatMap(b => b.extra_service_ids ?? []),
+    ]))
     const { data: dbServices, error: svcError } = await supabase
       .from('services')
       .select('id, price, barbershop_id')
@@ -90,9 +95,12 @@ export async function POST(req: NextRequest) {
     }
 
     const priceMap = new Map(dbServices.map(s => [s.id, Number(s.price)]))
-    const calculatedTotal = normalizedBlocks.reduce(
-      (sum, b) => sum + (priceMap.get(b.service_id) ?? 0), 0
-    )
+    // Sumar precio del primario + todos los extras de cada bloque
+    const calculatedTotal = normalizedBlocks.reduce((sum, b) => {
+      const primaryPrice = priceMap.get(b.service_id) ?? 0
+      const extraPrice = (b.extra_service_ids ?? []).reduce((s, id) => s + (priceMap.get(id) ?? 0), 0)
+      return sum + primaryPrice + extraPrice
+    }, 0)
 
     // ── Rate limiting anti-spam: máximo de citas pendientes sin pagar por teléfono ──
     // Un cliente real no necesita muchas reservas sin pagar a la vez. Esto frena

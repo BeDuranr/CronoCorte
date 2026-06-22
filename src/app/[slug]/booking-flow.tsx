@@ -502,13 +502,15 @@ function StepConfirm({
         const duration = person.services.reduce((s, svc) => s + svc.duration_minutes, 0) || 60
         const { startsAt, endsAt } = buildTimestamps(sortedTimes[idx], duration)
         const primary = person.services[0]
-        const extra = person.services.slice(1).map(s => s.name).join(', ')
+        const extraServices = person.services.slice(1)
+        const extraNames = extraServices.map(s => s.name).join(', ')
         const noteParts = [
-          extra ? `Servicios adicionales: ${extra}` : '',
+          extraNames ? `Servicios adicionales: ${extraNames}` : '',
           idx === 0 && form.notes.trim() ? form.notes.trim() : '',
         ].filter(Boolean)
         return {
           service_id: primary.id,
+          extra_service_ids: extraServices.map(s => s.id),
           starts_at: startsAt,
           ends_at: endsAt,
           notes: noteParts.length ? noteParts.join('\n') : null,
