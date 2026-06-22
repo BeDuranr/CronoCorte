@@ -126,7 +126,7 @@ export function ChatWidget({ barbershopId, barbershopSlug, agentName = 'Asistent
       <button
         onClick={() => setOpen(o => !o)}
         aria-label="Asistente de cortes"
-        className={`fixed bottom-5 right-5 z-50 w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-white transition-all duration-200 hover:scale-105 ${
+        className={`fixed bottom-20 right-5 sm:bottom-5 z-50 w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-white transition-all duration-200 hover:scale-105 ${
           open ? 'bg-[rgb(var(--bg-secondary))]' : 'bg-brand-red'
         }`}
       >
@@ -138,7 +138,7 @@ export function ChatWidget({ barbershopId, barbershopSlug, agentName = 'Asistent
 
       {/* Panel */}
       {open && (
-        <div className="fixed bottom-24 right-5 z-50 w-[340px] h-[500px] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-[rgb(var(--fg-secondary))]/10 bg-[rgb(var(--bg))]">
+        <div className="fixed bottom-36 right-5 sm:bottom-24 z-50 w-[340px] h-[500px] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-[rgb(var(--fg-secondary))]/10 bg-[rgb(var(--bg))]">
 
           {/* Header */}
           <div className="px-4 py-3 bg-brand-red flex items-center gap-3 shrink-0">
