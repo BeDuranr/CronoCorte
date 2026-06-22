@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { X, Send, Camera, Loader2, Scissors, Trash2 } from 'lucide-react'
+import { X, Send, Camera, Loader2, Brain, Trash2 } from 'lucide-react'
 
 interface Message {
   role: 'user' | 'agent'
@@ -132,7 +132,7 @@ export function ChatWidget({ barbershopId, barbershopSlug, agentName = 'Asistent
       >
         {open
           ? <X size={22} className="text-[rgb(var(--fg))]" />
-          : <Scissors size={22} />
+          : <Brain size={22} />
         }
       </button>
 
