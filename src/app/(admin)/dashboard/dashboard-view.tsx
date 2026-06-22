@@ -116,7 +116,7 @@ function TodayTimeline({ appointments, workers }: { appointments: any[]; workers
   if (todayAppts.length === 0) return null
 
   // Horas únicas presentes hoy
-  const hours = [...new Set(todayAppts.map(a => format(parseISO(a.starts_at), 'HH:00')))].sort()
+  const hours = Array.from(new Set(todayAppts.map(a => format(parseISO(a.starts_at), 'HH:00')))).sort()
 
   const statusColor: Record<string, string> = {
     pending_payment: 'border-l-yellow-500 bg-yellow-500/5',

@@ -124,7 +124,7 @@ function BlockModal({
   onClose: () => void
 }) {
   const BASE_PRESETS = [30, 45, 60, 90]
-  const presets = [...new Set([...BASE_PRESETS.filter(p => p < maxMin), maxMin])].sort((a, b) => a - b)
+  const presets = Array.from(new Set([...BASE_PRESETS.filter(p => p < maxMin), maxMin])).sort((a, b) => a - b)
   const [duration, setDuration] = useState(maxMin)
   const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(false)

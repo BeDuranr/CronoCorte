@@ -339,7 +339,7 @@ export default function ServiciosPage() {
           title={`Eliminar "${deleteService.name}"`}
           message="Esta acción no se puede deshacer. Los clientes no podrán reservar este servicio."
           confirmLabel="Eliminar"
-          onConfirm={() => handleDelete(deleteId)}
+          onConfirm={async () => { await handleDelete(deleteId) }}
           onClose={() => setDeleteId(null)}
         />
       )}
