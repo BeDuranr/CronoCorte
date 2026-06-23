@@ -371,7 +371,7 @@ export function DashboardView({ barbershop, todayAppointments, weekStats, worker
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Agenda */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 min-w-0">
           {/* Timeline hoy */}
           {workers.length > 0 && (
             <div className="mb-5">
@@ -434,7 +434,7 @@ export function DashboardView({ barbershop, todayAppointments, weekStats, worker
         </div>
 
         {/* Sidebar */}
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 min-w-0">
           {/* Link de reservas */}
           <div className="card p-4">
             <p className="text-xs text-[rgb(var(--fg-secondary))] mb-2">Link de reservas</p>

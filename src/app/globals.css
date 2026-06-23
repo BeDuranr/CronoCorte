@@ -29,6 +29,10 @@
     @apply border-[rgb(var(--border))];
   }
 
+  html {
+    overflow-x: hidden;
+  }
+
   body {
     @apply bg-[rgb(var(--bg))] text-[rgb(var(--fg))] font-sans antialiased;
     transition: background-color 0.2s, color 0.2s;
