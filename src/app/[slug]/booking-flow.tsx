@@ -652,8 +652,50 @@ function StepConfirm({
   )
 }
 
+// ── Modal: aviso WhatsApp en camino ──────────────────────────────────────────
+function WhatsAppPendingModal({ onClose }: { onClose: () => void }) {
+  const [secs, setSecs] = useState(5)
+
+  useEffect(() => {
+    if (secs === 0) return
+    const t = setTimeout(() => setSecs(s => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [secs])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-5">
+      <div className="bg-[rgb(var(--bg))] rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-4">
+        <div className="w-14 h-14 rounded-full bg-[#25D366]/10 flex items-center justify-center">
+          <Phone size={26} className="text-[#25D366]" />
+        </div>
+        <div>
+          <h3 className="text-lg font-bold text-[rgb(var(--fg))] mb-2">
+            Revisa tu WhatsApp
+          </h3>
+          <p className="text-sm text-[rgb(var(--fg-secondary))] leading-relaxed">
+            En los próximos segundos recibirás un mensaje con los datos de tu reserva.
+            Desde ese chat,{' '}
+            <span className="font-semibold text-[rgb(var(--fg))]">
+              envía la foto del comprobante
+            </span>{' '}
+            para confirmar tu hora.
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          disabled={secs > 0}
+          className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {secs > 0 ? `Entendido (${secs}s)` : 'Entendido'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Pantalla de éxito ─────────────────────────────────────────────────────────
 function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }: any) {
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(true)
   const [secs, setSecs] = useState(30 * 60)
   const [copied, setCopied] = useState<string | null>(null)
 
@@ -731,6 +773,10 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
 
   return (
     <div className="py-8">
+      {showWhatsAppModal && (
+        <WhatsAppPendingModal onClose={() => setShowWhatsAppModal(false)} />
+      )}
+
       {/* Ícono éxito */}
       <div className="text-center mb-6">
         <div className="w-14 h-14 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-3">
