@@ -263,10 +263,6 @@ CREATE POLICY "worker updates own appointments" ON appointments
 -- Inserción pública — clientes sin login crean citas
 CREATE POLICY "public insert appointment" ON appointments
   FOR INSERT WITH CHECK (TRUE);
--- Cancelación por token — UPDATE público validado por cancel_token
-CREATE POLICY "cancel by token" ON appointments
-  FOR UPDATE USING (cancel_token = current_setting('app.cancel_token', TRUE));
-
 -- portfolio: admin gestiona, público lee
 CREATE POLICY "admin manages portfolio" ON portfolio_photos
   FOR ALL USING (
