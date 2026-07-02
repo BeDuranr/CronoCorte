@@ -120,7 +120,7 @@ async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number, tr
     })
 
     const recipientBlock = transferInfo
-      ? `\nDatos del destinatario esperado:\n${transferInfo}\nVerifica que el destinatario visible en el comprobante (nombre o RUT) coincida con estos datos. Usa recipient_ok: false SOLO si el comprobante muestra claramente un destinatario diferente. Si no se ven datos del destinatario, usa recipient_ok: true.`
+      ? `\nDatos del destinatario esperado:\n${transferInfo}\nReglas para recipient_ok:\n- true si el nombre del destinatario en el comprobante coincide (aunque sea parcial, sin importar mayúsculas/minúsculas)\n- true si el RUT del destinatario en el comprobante coincide\n- true si el número de cuenta coincide\n- true si el comprobante no muestra datos del destinatario\n- false SOLO si el comprobante muestra claramente un nombre o RUT diferente al esperado`
       : ''
 
     const response = await groq.chat.completions.create({
