@@ -78,11 +78,12 @@ function isReceiptDateValid(receiptDate: string | null): boolean {
   }
 }
 
-async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number): Promise<{
+async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number, transferInfo?: string | null): Promise<{
   verified: boolean
   amount?: number
   reason: string
   dateIssue?: boolean
+  recipientIssue?: boolean
 }> {
   try {
     const twilioAuth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64')
@@ -118,6 +119,10 @@ async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number): P
       year: 'numeric',
     })
 
+    const recipientBlock = transferInfo
+      ? `\nDatos del destinatario esperado:\n${transferInfo}\nVerifica que el destinatario del comprobante coincida con estos datos (RUT, nombre o número de cuenta). Si el comprobante no muestra datos del destinatario, marca recipient_ok como true.`
+      : ''
+
     const response = await groq.chat.completions.create({
       model: VISION_MODEL,
       messages: [
@@ -133,9 +138,9 @@ async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number): P
               text: `Analiza este comprobante de transferencia bancaria chilena.
 La fecha de hoy es ${todayChile}.
 Extrae el monto transferido, la fecha de la transacción y si es un comprobante válido.
-La fecha debe estar en formato DD-MM-YYYY o YYYY-MM-DD.
+La fecha debe estar en formato DD-MM-YYYY o YYYY-MM-DD.${recipientBlock}
 Responde SOLO con JSON en este formato exacto (sin markdown):
-{"amount": <número o null>, "date": <"DD-MM-YYYY" o null>, "is_valid_receipt": <true/false>, "confidence": <0.0-1.0>}`,
+{"amount": <número o null>, "date": <"DD-MM-YYYY" o null>, "is_valid_receipt": <true/false>, "confidence": <0.0-1.0>, "recipient_ok": <true/false>}`,
             },
           ],
         },
@@ -156,6 +161,18 @@ Responde SOLO con JSON en este formato exacto (sin markdown):
     // Validar fecha — debe ser hoy o ayer
     const dateOk = isReceiptDateValid(json.date)
 
+    // Validar destinatario — solo si se proporcionaron datos de transferencia
+    const recipientOk = transferInfo ? json.recipient_ok === true : true
+
+    if (amountOk && dateOk && !recipientOk) {
+      return {
+        verified: false,
+        amount: json.amount,
+        recipientIssue: true,
+        reason: `El comprobante no corresponde a una transferencia a esta barbería. Verifica que enviaste al destinatario correcto.`,
+      }
+    }
+
     if (amountOk && !dateOk) {
       return {
         verified: false,
@@ -165,7 +182,7 @@ Responde SOLO con JSON en este formato exacto (sin markdown):
       }
     }
 
-    const verified = amountOk && dateOk
+    const verified = amountOk && dateOk && recipientOk
 
     return {
       verified,
@@ -265,7 +282,7 @@ export async function POST(req: NextRequest) {
 
       await sendWhatsApp(from, `🔍 Verificando tu comprobante...`)
 
-      const result = await verifyPaymentReceipt(mediaUrl, price)
+      const result = await verifyPaymentReceipt(mediaUrl, price, shop?.transfer_info)
 
       if (result.verified) {
         // Confirmar: si hay grupo, confirmar todas las citas del grupo; si no, solo esta.
@@ -294,8 +311,13 @@ export async function POST(req: NextRequest) {
             `💰 Pago verificado\nCliente: ${appointment.client_name}\nServicio: ${service?.name}\n${result.reason}`
           )
         }
+      } else if (result.recipientIssue) {
+        await sendWhatsApp(
+          from,
+          `⚠️ *Comprobante rechazado*\n\n${result.reason}\n\n` +
+          `Si crees que es un error, contacta directamente a la barbería.`
+        )
       } else if (result.dateIssue) {
-        // Mensaje específico para comprobante con fecha incorrecta
         await sendWhatsApp(
           from,
           `⚠️ *Comprobante rechazado*\n\n${result.reason}\n\n` +
