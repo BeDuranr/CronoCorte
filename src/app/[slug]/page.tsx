@@ -52,9 +52,9 @@ export default async function PublicBookingPage({ params }: Props) {
     .eq('is_active', true)
     .order('sort_order')
 
-  // Active workers
+  // Active workers — consulta la vista pública (no expone calendar_token ni phone)
   const { data: workers } = await supabase
-    .from('workers')
+    .from('public_workers')
     .select('id, name, specialty, avatar_url')
     .eq('barbershop_id', barbershop.id)
     .eq('is_active', true)

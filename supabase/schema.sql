@@ -208,15 +208,20 @@ CREATE POLICY "admin owns barbershop" ON barbershops
 CREATE POLICY "public read barbershop" ON barbershops
   FOR SELECT USING (TRUE);
 
--- workers: admin gestiona, worker se ve a sí mismo, público lee activos
+-- workers: admin gestiona, worker se ve a sí mismo
+-- El público usa la vista public_workers (no expone calendar_token ni phone)
 CREATE POLICY "admin manages workers" ON workers
   FOR ALL USING (
     barbershop_id IN (SELECT id FROM barbershops WHERE admin_id = auth.uid())
   );
 CREATE POLICY "worker sees own record" ON workers
   FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY "public read active workers" ON workers
-  FOR SELECT USING (is_active = TRUE);
+
+-- Vista pública con columnas seguras (sin calendar_token ni phone)
+CREATE OR REPLACE VIEW public_workers AS
+SELECT id, barbershop_id, name, specialty, avatar_url, is_active
+FROM workers;
+GRANT SELECT ON public_workers TO anon, authenticated;
 
 -- services: admin gestiona, público lee activos
 CREATE POLICY "admin manages services" ON services
