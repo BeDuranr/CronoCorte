@@ -142,6 +142,7 @@ CREATE TABLE appointments (
   status                appointment_status DEFAULT 'pending_payment',
   -- Cancelación sin login
   cancel_token          VARCHAR(64) UNIQUE DEFAULT encode(gen_random_bytes(32), 'hex'),
+  cancellation_reason   TEXT,
   -- Pago
   payment_receipt_url   TEXT,
   payment_amount        NUMERIC(10,2),

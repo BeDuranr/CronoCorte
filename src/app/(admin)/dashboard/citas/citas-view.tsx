@@ -162,12 +162,14 @@ export function CitasView({ barbershopId, appointments: initial, workers }: Prop
 
   const cancelWithReason = async (id: string, reason: string) => {
     setLoadingId(id)
-    const { error } = await supabase
-      .from('appointments')
-      .update({ status: 'cancelled', cancellation_reason: reason })
-      .eq('id', id)
-    if (error) {
-      toast.error('Error al cancelar')
+    const res = await fetch('/api/appointments/admin-cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, reason }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      toast.error(data.message || 'Error al cancelar')
     } else {
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, status: 'cancelled' } : a))
       toast.success('Cita cancelada')

@@ -19,6 +19,7 @@ export type Database = {
           barbershop_id: string
           booking_group_id: string | null
           cancel_token: string | null
+          cancellation_reason: string | null
           client_name: string
           client_phone: string
           created_at: string | null
@@ -41,6 +42,7 @@ export type Database = {
           barbershop_id: string
           booking_group_id?: string | null
           cancel_token?: string | null
+          cancellation_reason?: string | null
           client_name: string
           client_phone: string
           created_at?: string | null
@@ -63,6 +65,7 @@ export type Database = {
           barbershop_id?: string
           booking_group_id?: string | null
           cancel_token?: string | null
+          cancellation_reason?: string | null
           client_name?: string
           client_phone?: string
           created_at?: string | null
