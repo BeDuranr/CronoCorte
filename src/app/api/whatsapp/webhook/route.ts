@@ -120,7 +120,7 @@ async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number, tr
     })
 
     const recipientBlock = transferInfo
-      ? `\nDatos del destinatario esperado:\n${transferInfo}\nVerifica que el destinatario del comprobante coincida con estos datos (RUT, nombre o número de cuenta). Si el comprobante no muestra datos del destinatario, marca recipient_ok como true.`
+      ? `\nDatos del destinatario esperado:\n${transferInfo}\nVerifica que el destinatario visible en el comprobante (nombre o RUT) coincida con estos datos. Usa recipient_ok: false SOLO si el comprobante muestra claramente un destinatario diferente. Si no se ven datos del destinatario, usa recipient_ok: true.`
       : ''
 
     const response = await groq.chat.completions.create({
@@ -135,10 +135,11 @@ async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number, tr
             },
             {
               type: 'text',
-              text: `Analiza este comprobante de transferencia bancaria chilena.
+              text: `Analiza esta imagen de un comprobante de transferencia bancaria chilena.
 La fecha de hoy es ${todayChile}.
-Extrae el monto transferido, la fecha de la transacción y si es un comprobante válido.
-La fecha debe estar en formato DD-MM-YYYY o YYYY-MM-DD.${recipientBlock}
+Extrae el monto transferido, la fecha de la transacción y evalúa si la imagen es un comprobante bancario real.
+La fecha debe estar en formato DD-MM-YYYY o YYYY-MM-DD.
+IMPORTANTE: is_valid_receipt debe ser true si la imagen parece un comprobante bancario legítimo, independientemente de a quién fue la transferencia.${recipientBlock}
 Responde SOLO con JSON en este formato exacto (sin markdown):
 {"amount": <número o null>, "date": <"DD-MM-YYYY" o null>, "is_valid_receipt": <true/false>, "confidence": <0.0-1.0>, "recipient_ok": <true/false>}`,
             },
