@@ -17,17 +17,7 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient()
 
-    // Verificar que la cita pertenece a la barbería del admin
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('barbershop_id, role')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile || profile.role !== 'admin') {
-      return NextResponse.json({ message: 'No autorizado' }, { status: 403 })
-    }
-
+    // Verificar que el caller es admin de la barbería a la que pertenece la cita
     const { data: appt, error: fetchError } = await supabase
       .from('appointments')
       .select('id, status, booking_group_id, barbershop_id')
@@ -38,7 +28,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Cita no encontrada' }, { status: 404 })
     }
 
-    if (appt.barbershop_id !== profile.barbershop_id) {
+    const { data: shop } = await supabase
+      .from('barbershops')
+      .select('id')
+      .eq('id', appt.barbershop_id)
+      .eq('admin_id', user.id)
+      .single()
+
+    if (!shop) {
       return NextResponse.json({ message: 'No autorizado' }, { status: 403 })
     }
 
