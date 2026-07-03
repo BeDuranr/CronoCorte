@@ -23,51 +23,31 @@ export function RegisterForm() {
     e.preventDefault()
     setLoading(true)
     try {
-      // 1. Verificar si el slug ya existe antes de crear el usuario
-      const slug = toSlug(form.barbershopName)
-      const { data: existing } = await supabase
-        .from('barbershops')
-        .select('id')
-        .eq('slug', slug)
-        .single()
+      // 1. Crear usuario + barbería en el servidor (bypass RLS con service role).
+      //    Se hace server-side porque el signUp del cliente no deja sesión activa
+      //    cuando la confirmación de email está habilitada, y el insert fallaba por RLS.
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: form.fullName,
+          barbershopName: form.barbershopName,
+          email: form.email,
+          password: form.password,
+        }),
+      })
 
-      if (existing) {
-        throw new Error(`Ya existe una barbería registrada con el nombre "${form.barbershopName}". Prueba con un nombre diferente.`)
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.message || 'Error al registrar')
       }
 
-      // 2. Crear usuario en Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // 2. Iniciar sesión para establecer la sesión en el navegador
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: form.email,
         password: form.password,
-        options: {
-          data: { full_name: form.fullName, role: 'admin' }
-        },
       })
-      if (authError) {
-        // Error de email ya registrado
-        if (authError.message.toLowerCase().includes('already registered')) {
-          throw new Error('Ya existe una cuenta con ese email. Intenta iniciar sesión.')
-        }
-        throw authError
-      }
-      if (!authData.user) throw new Error('No se pudo crear el usuario')
-
-      // 3. Crear la barbería
-      const { error: shopError } = await supabase
-        .from('barbershops')
-        .insert({
-          admin_id: authData.user.id,
-          name: form.barbershopName,
-          slug,
-        })
-
-      if (shopError) {
-        // Por si acaso hay una condición de carrera con el slug
-        if (shopError.code === '23505') {
-          throw new Error(`Ya existe una barbería registrada con el nombre "${form.barbershopName}". Prueba con un nombre diferente.`)
-        }
-        throw shopError
-      }
+      if (signInError) throw signInError
 
       toast.success('¡Cuenta creada! Completa el perfil de tu barbería.')
       router.push('/onboarding')
