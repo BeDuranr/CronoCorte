@@ -654,7 +654,7 @@ function StepConfirm({
 
 // ── Modal: aviso WhatsApp en camino ──────────────────────────────────────────
 function WhatsAppPendingModal({ onClose }: { onClose: () => void }) {
-  const [secs, setSecs] = useState(5)
+  const [secs, setSecs] = useState(8)
 
   useEffect(() => {
     if (secs === 0) return
