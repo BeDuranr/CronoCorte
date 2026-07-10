@@ -115,6 +115,7 @@ export default function BarberosPage() {
   const [shopId, setShopId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [newWorker, setNewWorker] = useState({ name: '', email: '', specialty: '' })
+  const [withAccount, setWithAccount] = useState(true)
   const [addLoading, setAddLoading] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ name: '', specialty: '' })
@@ -139,28 +140,37 @@ export default function BarberosPage() {
   }
 
   const handleAdd = async () => {
-    if (!newWorker.name.trim() || !newWorker.email.trim()) {
-      return toast.error('Nombre y email son requeridos')
+    if (!newWorker.name.trim()) {
+      return toast.error('El nombre es requerido')
+    }
+    if (withAccount && !newWorker.email.trim()) {
+      return toast.error('El email es requerido para crear una cuenta')
     }
     setAddLoading(true)
     try {
-      const res = await fetch('/api/workers/invite', {
+      const endpoint = withAccount ? '/api/workers/invite' : '/api/workers/create'
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newWorker.name,
-          email: newWorker.email,
+          email: withAccount ? newWorker.email : undefined,
           specialty: newWorker.specialty || null,
           barbershop_id: shopId,
         }),
       })
       if (!res.ok) { const err = await res.json(); throw new Error(err.message) }
-      toast.success(`Invitación enviada a ${newWorker.email}`)
+      toast.success(
+        withAccount
+          ? `Invitación enviada a ${newWorker.email}`
+          : `${newWorker.name} agregado`
+      )
       setNewWorker({ name: '', email: '', specialty: '' })
+      setWithAccount(true)
       setAdding(false)
       loadData()
     } catch (err: any) {
-      toast.error(err.message || 'Error al invitar')
+      toast.error(err.message || 'Error al agregar barbero')
     } finally {
       setAddLoading(false)
     }
@@ -251,7 +261,7 @@ export default function BarberosPage() {
             </p>
           </div>
           <button onClick={() => setAdding(true)} className="btn-primary flex items-center gap-2">
-            <Plus size={15} /> Invitar
+            <Plus size={15} /> Agregar
           </button>
         </div>
 
@@ -262,7 +272,41 @@ export default function BarberosPage() {
             {/* Formulario invitar */}
             {adding && (
               <div className="card p-4 border-brand-red/30 flex flex-col gap-3">
-                <h3 className="text-sm font-semibold">Invitar barbero</h3>
+                <h3 className="text-sm font-semibold">Agregar barbero</h3>
+
+                {/* Selector de modo: con cuenta / sin cuenta */}
+                <div>
+                  <p className="label mb-1.5">¿Tendrá acceso a la app?</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setWithAccount(true)}
+                      className={`p-2.5 rounded-lg border text-left transition-all ${
+                        withAccount
+                          ? 'border-brand-red bg-brand-red/5'
+                          : 'border-[rgb(var(--fg-secondary))]/20 hover:border-[rgb(var(--fg-secondary))]/40'
+                      }`}
+                    >
+                      <span className="block text-xs font-semibold text-[rgb(var(--fg))]">Con cuenta</span>
+                      <span className="block text-[11px] text-[rgb(var(--fg-secondary))] mt-0.5">
+                        Recibe invitación y ve su agenda
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setWithAccount(false)}
+                      className={`p-2.5 rounded-lg border text-left transition-all ${
+                        !withAccount
+                          ? 'border-brand-red bg-brand-red/5'
+                          : 'border-[rgb(var(--fg-secondary))]/20 hover:border-[rgb(var(--fg-secondary))]/40'
+                      }`}
+                    >
+                      <span className="block text-xs font-semibold text-[rgb(var(--fg))]">Sin cuenta</span>
+                      <span className="block text-[11px] text-[rgb(var(--fg-secondary))] mt-0.5">
+                        Tú gestionas su agenda
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
                 <input
                   className="input"
                   placeholder="Nombre"
@@ -270,13 +314,15 @@ export default function BarberosPage() {
                   onChange={e => setNewWorker(f => ({ ...f, name: e.target.value }))}
                   autoFocus
                 />
-                <input
-                  type="email"
-                  className="input"
-                  placeholder="Email (recibirá invitación)"
-                  value={newWorker.email}
-                  onChange={e => setNewWorker(f => ({ ...f, email: e.target.value }))}
-                />
+                {withAccount && (
+                  <input
+                    type="email"
+                    className="input"
+                    placeholder="Email (recibirá invitación)"
+                    value={newWorker.email}
+                    onChange={e => setNewWorker(f => ({ ...f, email: e.target.value }))}
+                  />
+                )}
                 <input
                   className="input"
                   placeholder="Especialidad (opcional)"
@@ -287,9 +333,11 @@ export default function BarberosPage() {
                   <button onClick={handleAdd} disabled={addLoading} className="btn-primary py-1.5 px-4 text-sm">
                     {addLoading
                       ? <Loader2 size={14} className="animate-spin" />
-                      : <span className="flex items-center gap-1"><Mail size={13} /> Enviar invitación</span>}
+                      : withAccount
+                      ? <span className="flex items-center gap-1"><Mail size={13} /> Enviar invitación</span>
+                      : <span className="flex items-center gap-1"><Plus size={13} /> Agregar barbero</span>}
                   </button>
-                  <button onClick={() => setAdding(false)} className="btn-secondary py-1.5 px-4 text-sm">
+                  <button onClick={() => { setAdding(false); setWithAccount(true) }} className="btn-secondary py-1.5 px-4 text-sm">
                     Cancelar
                   </button>
                 </div>
@@ -298,7 +346,7 @@ export default function BarberosPage() {
 
             {workers.length === 0 && !adding ? (
               <div className="card p-8 text-center">
-                <p className="text-[rgb(var(--fg-secondary))] text-sm">No hay barberos. Invita al primero.</p>
+                <p className="text-[rgb(var(--fg-secondary))] text-sm">No hay barberos. Agrega al primero para poder recibir reservas.</p>
               </div>
             ) : (
               workers.map(worker => (
