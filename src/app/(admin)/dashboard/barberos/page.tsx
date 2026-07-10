@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Navbar } from '@/components/layout/navbar'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, Check, X, Loader2, Mail, Link as LinkIcon, Trash2, RefreshCw } from 'lucide-react'
+import { Plus, Pencil, Check, X, Loader2, Mail, Link as LinkIcon, Trash2 } from 'lucide-react'
 
 interface Worker {
   id: string
@@ -98,12 +98,12 @@ function ConfirmModal({
   )
 }
 
-// ── Chip de estado invitación ─────────────────────────────────────────────────
-function InviteStatus({ hasAccount }: { hasAccount: boolean }) {
+// ── Chip de estado de la cuenta ───────────────────────────────────────────────
+function AccountStatus({ hasAccount }: { hasAccount: boolean }) {
   return (
-    <span className={`flex items-center gap-1 text-xs font-medium ${hasAccount ? 'text-green-500' : 'text-yellow-500'}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${hasAccount ? 'bg-green-500' : 'bg-yellow-500'}`} />
-      {hasAccount ? 'Activo' : 'Invitado'}
+    <span className={`flex items-center gap-1 text-xs font-medium ${hasAccount ? 'text-green-500' : 'text-[rgb(var(--fg-secondary))]'}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${hasAccount ? 'bg-green-500' : 'bg-[rgb(var(--fg-secondary))]/50'}`} />
+      {hasAccount ? 'Con cuenta' : 'Sin cuenta'}
     </span>
   )
 }
@@ -119,7 +119,6 @@ export default function BarberosPage() {
   const [addLoading, setAddLoading] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ name: '', specialty: '' })
-  const [resendingId, setResendingId] = useState<string | null>(null)
   const [deleteWorker, setDeleteWorker] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => { loadData() }, [])
@@ -173,29 +172,6 @@ export default function BarberosPage() {
       toast.error(err.message || 'Error al agregar barbero')
     } finally {
       setAddLoading(false)
-    }
-  }
-
-  const handleResendInvite = async (worker: Worker) => {
-    setResendingId(worker.id)
-    try {
-      const res = await fetch('/api/workers/invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: worker.name,
-          email: '', // El API debería buscar el email del usuario existente o re-crear
-          specialty: worker.specialty,
-          barbershop_id: shopId,
-          worker_id: worker.id, // hint para reenvío
-        }),
-      })
-      if (!res.ok) throw new Error('Error al reenviar')
-      toast.success('Invitación reenviada')
-    } catch {
-      toast.error('No se pudo reenviar la invitación')
-    } finally {
-      setResendingId(null)
     }
   }
 
@@ -388,55 +364,32 @@ export default function BarberosPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold text-[rgb(var(--fg))]">{worker.name}</p>
-                            <InviteStatus hasAccount={!!worker.user_id} />
+                            <AccountStatus hasAccount={!!worker.user_id} />
                           </div>
                           {worker.specialty && (
                             <p className="text-xs text-[rgb(var(--fg-secondary))]">{worker.specialty}</p>
                           )}
-                          {/* Invitación pendiente: acciones */}
-                          {!worker.user_id && (
-                            <div className="flex items-center gap-2 mt-2">
-                              <button
-                                onClick={() => handleResendInvite(worker)}
-                                disabled={resendingId === worker.id}
-                                className="flex items-center gap-1 text-xs border border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg-secondary))] px-2.5 py-1 rounded-lg hover:border-[rgb(var(--fg-secondary))]/40 transition-all"
-                              >
-                                {resendingId === worker.id
-                                  ? <Loader2 size={10} className="animate-spin" />
-                                  : <RefreshCw size={10} />}
-                                Reenviar
-                              </button>
-                              <button
-                                onClick={() => setDeleteWorker({ id: worker.id, name: worker.name })}
-                                className="flex items-center gap-1 text-xs border border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg-secondary))] px-2.5 py-1 rounded-lg hover:border-brand-red/40 hover:text-brand-red transition-all"
-                              >
-                                <X size={10} /> Revocar
-                              </button>
-                            </div>
-                          )}
                         </div>
 
-                        {/* Controles (solo si tiene cuenta) */}
-                        {worker.user_id && (
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <Toggle on={worker.is_active} onChange={() => handleToggleActive(worker.id, worker.is_active)} />
-                            <button
-                              onClick={() => {
-                                setEditId(worker.id)
-                                setEditForm({ name: worker.name, specialty: worker.specialty ?? '' })
-                              }}
-                              className="p-1.5 rounded-lg text-[rgb(var(--fg-secondary))] hover:bg-[rgb(var(--bg-secondary))] transition-all"
-                            >
-                              <Pencil size={13} />
-                            </button>
-                            <button
-                              onClick={() => setDeleteWorker({ id: worker.id, name: worker.name })}
-                              className="p-1.5 rounded-lg text-[rgb(var(--fg-secondary))] hover:bg-brand-red/10 hover:text-brand-red transition-all"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        )}
+                        {/* Controles */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Toggle on={worker.is_active} onChange={() => handleToggleActive(worker.id, worker.is_active)} />
+                          <button
+                            onClick={() => {
+                              setEditId(worker.id)
+                              setEditForm({ name: worker.name, specialty: worker.specialty ?? '' })
+                            }}
+                            className="p-1.5 rounded-lg text-[rgb(var(--fg-secondary))] hover:bg-[rgb(var(--bg-secondary))] transition-all"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteWorker({ id: worker.id, name: worker.name })}
+                            className="p-1.5 rounded-lg text-[rgb(var(--fg-secondary))] hover:bg-brand-red/10 hover:text-brand-red transition-all"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </div>
 
                       {/* iCal link */}
