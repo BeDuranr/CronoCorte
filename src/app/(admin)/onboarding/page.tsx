@@ -400,17 +400,19 @@ function StepWorkers({
     setWorkers(w => w.map((wk, idx) => idx === i ? { ...wk, [field]: val } : wk))
 
   const handleSave = async () => {
-    const valid = workers.filter(w => w.name.trim() && w.email.trim())
+    // Basta el nombre. Con correo → invitación (tendrá cuenta). Sin correo → barbero sin cuenta.
+    const valid = workers.filter(w => w.name.trim())
 
     setLoading(true)
     try {
       for (const worker of valid) {
-        const res = await fetch('/api/workers/invite', {
+        const hasEmail = !!worker.email.trim()
+        const res = await fetch(hasEmail ? '/api/workers/invite' : '/api/workers/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: worker.name,
-            email: worker.email,
+            email: hasEmail ? worker.email : undefined,
             specialty: worker.specialty,
             barbershop_id: shopId,
           }),
@@ -418,11 +420,11 @@ function StepWorkers({
 
         if (!res.ok) {
           const err = await res.json()
-          throw new Error(err.message || 'Error al invitar trabajador')
+          throw new Error(err.message || 'Error al agregar barbero')
         }
       }
 
-      toast.success(valid.length ? `${valid.length} barbero(s) invitado(s)` : 'Configuración completada')
+      toast.success(valid.length ? `${valid.length} barbero(s) agregado(s)` : 'Configuración completada')
       onFinish()
     } catch (err: any) {
       toast.error(err.message || 'Error al guardar')
@@ -434,7 +436,8 @@ function StepWorkers({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-[rgb(var(--fg-secondary))]">
-        Invita a tus barberos. Recibirán un email para crear su contraseña y podrán ver su agenda.
+        Agrega a tus barberos. Con correo recibirán una invitación para ver su propia agenda.
+        Si tú gestionas su agenda (o eres tú mismo el barbero), deja el correo vacío.
       </p>
 
       <div className="flex flex-col gap-3">
@@ -459,7 +462,7 @@ function StepWorkers({
             <input
               type="email"
               className="input"
-              placeholder="Email del barbero"
+              placeholder="Email del barbero (opcional)"
               value={wk.email}
               onChange={e => update(i, 'email', e.target.value)}
             />
@@ -480,8 +483,8 @@ function StepWorkers({
       <div className="flex flex-col gap-2 mt-2">
         <button onClick={handleSave} disabled={loading} className="btn-primary">
           {loading ? <Loader2 size={16} className="animate-spin" /> : (
-            workers.some(w => w.name && w.email)
-              ? 'Invitar y finalizar'
+            workers.some(w => w.name.trim())
+              ? 'Guardar y finalizar'
               : 'Omitir y finalizar'
           )}
         </button>

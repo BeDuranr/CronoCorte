@@ -1073,7 +1073,28 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
         </div>
       </div>
 
-      {successData ? (
+      {workers.length === 0 ? (
+        <div className="max-w-lg md:max-w-2xl mx-auto px-4 py-16 text-center">
+          <div className="w-14 h-14 rounded-full bg-brand-red/10 flex items-center justify-center mx-auto mb-4">
+            <Scissors size={24} className="text-brand-red" />
+          </div>
+          <h2 className="text-lg font-bold text-[rgb(var(--fg))]">Reservas no disponibles por ahora</h2>
+          <p className="text-sm text-[rgb(var(--fg-secondary))] mt-2 max-w-sm mx-auto">
+            Esta barbería aún no tiene barberos habilitados para agendar. Vuelve pronto
+            {barbershop.phone ? ' o escríbeles directamente.' : '.'}
+          </p>
+          {barbershop.phone && (
+            <a
+              href={`https://wa.me/${barbershop.phone.replace(/[^0-9]/g, '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 mt-5 py-2.5 px-4 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-semibold text-sm transition-colors"
+            >
+              <Phone size={15} /> Contactar por WhatsApp
+            </a>
+          )}
+        </div>
+      ) : successData ? (
         <div className="max-w-lg md:max-w-2xl mx-auto px-4">
           <BookingSuccess
             people={people}
