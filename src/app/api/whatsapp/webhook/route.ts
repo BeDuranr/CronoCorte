@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { ParsedReceipt, amountMatches, dedupeByGroup, selectReceiptTarget } from '@/lib/receipt-matching'
 import Groq from 'groq-sdk'
 import crypto from 'crypto'
 
@@ -76,14 +77,6 @@ function isReceiptDateValid(receiptDate: string | null): boolean {
   } catch {
     return false
   }
-}
-
-interface ParsedReceipt {
-  amount: number | null
-  date: string | null
-  is_valid_receipt: boolean
-  confidence: number
-  recipient_ok: boolean
 }
 
 // Lee el comprobante con el modelo de visión (una sola llamada) y devuelve los
@@ -173,16 +166,6 @@ Responde SOLO con JSON en este formato exacto (sin markdown):
     console.error('Receipt read error:', err)
     return { error: 'Error al analizar imagen' }
   }
-}
-
-// ¿El monto leído coincide (±5%) con el esperado y el comprobante es legible?
-function amountMatches(parsed: ParsedReceipt, expectedAmount: number): boolean {
-  return (
-    parsed.is_valid_receipt &&
-    parsed.confidence >= 0.7 &&
-    parsed.amount !== null &&
-    Math.abs(parsed.amount - expectedAmount) < expectedAmount * 0.05
-  )
 }
 
 // Evalúa un comprobante ya leído contra el monto esperado de UNA cita concreta.
@@ -296,14 +279,7 @@ export async function POST(req: NextRequest) {
       .order('starts_at', { ascending: true })
 
     // Deduplicar reservas grupales (comparten booking_group_id): una candidata por reserva.
-    const candidates: any[] = []
-    const seenGroups = new Set<string>()
-    for (const appt of ((pendingAppointments as any[]) ?? [])) {
-      const key = appt.booking_group_id ?? appt.id
-      if (seenGroups.has(key)) continue
-      seenGroups.add(key)
-      candidates.push(appt)
-    }
+    const candidates = dedupeByGroup((pendingAppointments as any[]) ?? [])
 
     // Para el branch del agente IA usamos la cita más próxima como contexto.
     const shop = candidates[0]?.barbershops as any
@@ -340,14 +316,9 @@ export async function POST(req: NextRequest) {
       }
       const parsed = read.parsed
 
-      // Elegir la cita objetivo. Con una sola candidata, esa. Con varias, la que
-      // coincida en monto (±5%); si ninguna coincide, se rechaza; si empatan, la más próxima.
-      let target: any
-      if (candidates.length === 1) {
-        target = candidates[0]
-      } else if (!parsed.is_valid_receipt || parsed.confidence < 0.7 || parsed.amount === null) {
-        // Con varias candidatas necesitamos el monto para desambiguar; si la imagen
-        // no es legible como comprobante, pedimos una más clara (no "monto no coincide").
+      // Elegir a qué cita corresponde el comprobante (por monto si hay varias).
+      const selection = selectReceiptTarget(candidates, parsed, expectedOf)
+      if (selection.kind === 'unreadable') {
         await sendWhatsApp(
           from,
           `⚠️ No pudimos leer tu comprobante.\n\nPor favor envía una imagen más clara o contacta a la barbería directamente.`
@@ -355,20 +326,18 @@ export async function POST(req: NextRequest) {
         return new NextResponse('<?xml version="1.0"?><Response></Response>', {
           headers: { 'Content-Type': 'text/xml' },
         })
-      } else {
-        const matches = candidates.filter(c => amountMatches(parsed, expectedOf(c)))
-        if (matches.length === 0) {
-          await sendWhatsApp(
-            from,
-            `⚠️ *Comprobante rechazado*\n\nEl monto del comprobante no coincide con ninguna de tus reservas pendientes. ` +
-            `Revisa el monto transferido o contacta a la barbería.`
-          )
-          return new NextResponse('<?xml version="1.0"?><Response></Response>', {
-            headers: { 'Content-Type': 'text/xml' },
-          })
-        }
-        target = matches[0] // ya vienen ordenadas por starts_at asc
       }
+      if (selection.kind === 'no_match') {
+        await sendWhatsApp(
+          from,
+          `⚠️ *Comprobante rechazado*\n\nEl monto del comprobante no coincide con ninguna de tus reservas pendientes. ` +
+          `Revisa el monto transferido o contacta a la barbería.`
+        )
+        return new NextResponse('<?xml version="1.0"?><Response></Response>', {
+          headers: { 'Content-Type': 'text/xml' },
+        })
+      }
+      const target = selection.target
 
       const targetShop = target.barbershops as any
       const service = target.services as any
