@@ -396,6 +396,24 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // ── El cliente envió un archivo que NO es imagen (PDF, audio, video…) ──
+    // El modelo de visión solo procesa imágenes, así que no se puede leer como
+    // comprobante. Interceptamos aquí para que el archivo no caiga en el agente IA
+    // (que respondería fuera de contexto) y guiamos al cliente si está pagando.
+    if (mediaUrl && !mediaType?.startsWith('image/')) {
+      if (candidates.length > 0) {
+        await sendWhatsApp(
+          from,
+          `📎 Recibimos tu archivo, pero para confirmar el pago necesitamos una *imagen* ` +
+          `(foto o captura de pantalla) del comprobante. Los archivos PDF no se pueden procesar ` +
+          `automáticamente.\n\nPor favor envía una captura, o contacta directamente a la barbería.`
+        )
+      }
+      return new NextResponse('<?xml version="1.0"?><Response></Response>', {
+        headers: { 'Content-Type': 'text/xml' },
+      })
+    }
+
     // ── Si la barbería tiene agente IA, derivar al agente ──
     if (shop?.agent_enabled && messageBody) {
       const agentRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/agent/chat`, {
