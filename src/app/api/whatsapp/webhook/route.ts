@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { ParsedReceipt, amountMatches, dedupeByGroup, selectReceiptTarget } from '@/lib/receipt-matching'
 import Groq from 'groq-sdk'
 import crypto from 'crypto'
 
@@ -78,12 +79,13 @@ function isReceiptDateValid(receiptDate: string | null): boolean {
   }
 }
 
-async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number, transferInfo?: string | null): Promise<{
-  verified: boolean
-  amount?: number
-  reason: string
-  dateIssue?: boolean
-  recipientIssue?: boolean
+// Lee el comprobante con el modelo de visión (una sola llamada) y devuelve los
+// campos crudos. No decide si es válido: eso lo hace evaluateReceipt contra un
+// monto esperado concreto. `transferInfo` se incluye para poder evaluar el
+// destinatario; pásalo solo cuando se conoce la barbería destino.
+async function readReceipt(imageUrl: string, transferInfo?: string | null): Promise<{
+  parsed?: ParsedReceipt
+  error?: string
 }> {
   try {
     const twilioAuth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64')
@@ -104,7 +106,7 @@ async function verifyPaymentReceipt(imageUrl: string, expectedAmount: number, tr
     })
     if (!imgRes.ok) {
       console.error('Failed to fetch Twilio media:', imgRes.status)
-      return { verified: false, reason: 'No se pudo descargar la imagen' }
+      return { error: 'No se pudo descargar la imagen' }
     }
     const imgBuffer = await imgRes.arrayBuffer()
     const imgBase64 = Buffer.from(imgBuffer).toString('base64')
@@ -151,50 +153,57 @@ Responde SOLO con JSON en este formato exacto (sin markdown):
 
     const text = response.choices[0].message.content?.trim() ?? ''
     const json = JSON.parse(text.replace(/```json?\n?/g, '').replace(/```/g, ''))
-
-    // Validar monto
-    const amountOk =
-      json.is_valid_receipt === true &&
-      json.confidence >= 0.7 &&
-      json.amount !== null &&
-      Math.abs(json.amount - expectedAmount) < expectedAmount * 0.05 // ±5% tolerancia
-
-    // Validar fecha — debe ser hoy o ayer
-    const dateOk = isReceiptDateValid(json.date)
-
-    // Validar destinatario — solo si se proporcionaron datos de transferencia
-    const recipientOk = transferInfo ? json.recipient_ok === true : true
-
-    if (amountOk && dateOk && !recipientOk) {
-      return {
-        verified: false,
-        amount: json.amount,
-        recipientIssue: true,
-        reason: `El comprobante no corresponde a una transferencia a esta barbería. Verifica que enviaste al destinatario correcto.`,
-      }
-    }
-
-    if (amountOk && !dateOk) {
-      return {
-        verified: false,
-        amount: json.amount,
-        dateIssue: true,
-        reason: `El comprobante tiene fecha ${json.date ?? 'no legible'}, pero debe ser de hoy (${todayChile}). Por favor envía una transferencia nueva.`,
-      }
-    }
-
-    const verified = amountOk && dateOk && recipientOk
-
     return {
-      verified,
-      amount: json.amount,
-      reason: verified
-        ? `Comprobante válido: $${json.amount?.toLocaleString('es-CL')} del ${json.date}`
-        : `No verificado: monto detectado $${json.amount?.toLocaleString('es-CL') ?? 'no legible'}, esperado $${expectedAmount.toLocaleString('es-CL')}`,
+      parsed: {
+        amount: json.amount ?? null,
+        date: json.date ?? null,
+        is_valid_receipt: json.is_valid_receipt === true,
+        confidence: typeof json.confidence === 'number' ? json.confidence : 0,
+        recipient_ok: json.recipient_ok === true,
+      },
     }
   } catch (err) {
-    console.error('Receipt verification error:', err)
-    return { verified: false, reason: 'Error al analizar imagen' }
+    console.error('Receipt read error:', err)
+    return { error: 'Error al analizar imagen' }
+  }
+}
+
+// Evalúa un comprobante ya leído contra el monto esperado de UNA cita concreta.
+function evaluateReceipt(
+  parsed: ParsedReceipt,
+  expectedAmount: number,
+  transferInfo: string | null | undefined,
+  todayChile: string
+): { verified: boolean; amount?: number; reason: string; dateIssue?: boolean; recipientIssue?: boolean } {
+  const amountOk = amountMatches(parsed, expectedAmount)
+  const dateOk = isReceiptDateValid(parsed.date)
+  const recipientOk = transferInfo ? parsed.recipient_ok === true : true
+
+  if (amountOk && dateOk && !recipientOk) {
+    return {
+      verified: false,
+      amount: parsed.amount ?? undefined,
+      recipientIssue: true,
+      reason: `El comprobante no corresponde a una transferencia a esta barbería. Verifica que enviaste al destinatario correcto.`,
+    }
+  }
+
+  if (amountOk && !dateOk) {
+    return {
+      verified: false,
+      amount: parsed.amount ?? undefined,
+      dateIssue: true,
+      reason: `El comprobante tiene fecha ${parsed.date ?? 'no legible'}, pero debe ser de hoy (${todayChile}). Por favor envía una transferencia nueva.`,
+    }
+  }
+
+  const verified = amountOk && dateOk && recipientOk
+  return {
+    verified,
+    amount: parsed.amount ?? undefined,
+    reason: verified
+      ? `Comprobante válido: $${parsed.amount?.toLocaleString('es-CL')} del ${parsed.date}`
+      : `No verificado: monto detectado $${parsed.amount?.toLocaleString('es-CL') ?? 'no legible'}, esperado $${expectedAmount.toLocaleString('es-CL')}`,
   }
 }
 
@@ -255,35 +264,85 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient()
 
-    // Buscar la cita más reciente pendiente de pago para este número
-    const { data: appointment } = await supabase
+    // Traer TODAS las citas pendientes de pago de este número. Puede haber más
+    // de una (reservas repetidas o de distintas barberías); el comprobante se
+    // asigna luego a la correcta por monto, no ciegamente a la más antigua.
+    const { data: pendingAppointments } = await supabase
       .from('appointments')
       .select(`
-        id, client_name, status, payment_verified, booking_group_id, total_amount,
+        id, client_name, status, payment_verified, booking_group_id, total_amount, starts_at,
         services(name, price),
         barbershops(id, name, phone, agent_enabled, agent_name, agent_tone, agent_prompt_custom, transfer_info, slug)
       `)
       .eq('client_phone', from)
       .eq('status', 'pending_payment')
       .order('starts_at', { ascending: true })
-      .limit(1)
-      .single()
 
-    const shop = appointment?.barbershops as any
+    // Deduplicar reservas grupales (comparten booking_group_id): una candidata por reserva.
+    const candidates = dedupeByGroup((pendingAppointments as any[]) ?? [])
+
+    // Para el branch del agente IA usamos la cita más próxima como contexto.
+    const shop = candidates[0]?.barbershops as any
 
     // ── Si el cliente envió una imagen, intentar verificar como comprobante ──
-    if (mediaUrl && mediaType?.startsWith('image/') && appointment) {
-      const service = appointment.services as any
-
-      // Monto esperado: si la reserva es grupal (o tiene total guardado), usar
-      // total_amount; si no, caer al precio del servicio individual.
-      const groupId = (appointment as any).booking_group_id as string | null
-      const totalAmount = (appointment as any).total_amount as number | null
-      const price = totalAmount ?? service?.price ?? 0
-
+    if (mediaUrl && mediaType?.startsWith('image/') && candidates.length > 0) {
       await sendWhatsApp(from, `🔍 Verificando tu comprobante...`)
 
-      const result = await verifyPaymentReceipt(mediaUrl, price, shop?.transfer_info)
+      const todayChile = new Date().toLocaleDateString('es-CL', {
+        timeZone: 'America/Santiago',
+        day: '2-digit', month: '2-digit', year: 'numeric',
+      })
+
+      // Monto esperado de una candidata: total de la reserva o precio del servicio.
+      const expectedOf = (c: any) =>
+        (c.total_amount as number | null) ?? (c.services as any)?.price ?? 0
+
+      // Datos del destinatario para el prompt: solo si todas las candidatas son
+      // de la misma barbería (si no, no sabemos contra cuál validar el destinatario).
+      const shopIds = new Set(candidates.map(c => (c.barbershops as any)?.id))
+      const readTransferInfo = shopIds.size === 1 ? (candidates[0].barbershops as any)?.transfer_info : null
+
+      const read = await readReceipt(mediaUrl, readTransferInfo)
+
+      if (read.error || !read.parsed) {
+        await sendWhatsApp(
+          from,
+          `⚠️ No pudimos verificar tu pago automáticamente.\n\n_${read.error ?? 'Error al analizar imagen'}_\n\n` +
+          `Por favor envía una imagen más clara o contacta a la barbería directamente.`
+        )
+        return new NextResponse('<?xml version="1.0"?><Response></Response>', {
+          headers: { 'Content-Type': 'text/xml' },
+        })
+      }
+      const parsed = read.parsed
+
+      // Elegir a qué cita corresponde el comprobante (por monto si hay varias).
+      const selection = selectReceiptTarget(candidates, parsed, expectedOf)
+      if (selection.kind === 'unreadable') {
+        await sendWhatsApp(
+          from,
+          `⚠️ No pudimos leer tu comprobante.\n\nPor favor envía una imagen más clara o contacta a la barbería directamente.`
+        )
+        return new NextResponse('<?xml version="1.0"?><Response></Response>', {
+          headers: { 'Content-Type': 'text/xml' },
+        })
+      }
+      if (selection.kind === 'no_match') {
+        await sendWhatsApp(
+          from,
+          `⚠️ *Comprobante rechazado*\n\nEl monto del comprobante no coincide con ninguna de tus reservas pendientes. ` +
+          `Revisa el monto transferido o contacta a la barbería.`
+        )
+        return new NextResponse('<?xml version="1.0"?><Response></Response>', {
+          headers: { 'Content-Type': 'text/xml' },
+        })
+      }
+      const target = selection.target
+
+      const targetShop = target.barbershops as any
+      const service = target.services as any
+      const groupId = target.booking_group_id as string | null
+      const result = evaluateReceipt(parsed, expectedOf(target), readTransferInfo, todayChile)
 
       if (result.verified) {
         // Confirmar: si hay grupo, confirmar todas las citas del grupo; si no, solo esta.
@@ -296,20 +355,20 @@ export async function POST(req: NextRequest) {
           await supabase
             .from('appointments')
             .update({ status: 'confirmed', payment_verified: true })
-            .eq('id', appointment.id)
+            .eq('id', target.id)
         }
 
         await sendWhatsApp(
           from,
-          `✅ *¡Pago verificado!* Tu hora en *${shop?.name}* está confirmada.\n\n` +
+          `✅ *¡Pago verificado!* Tu hora en *${targetShop?.name}* está confirmada.\n\n` +
           `Te recordaremos 24h y 1h antes. ¡Nos vemos pronto! ✂️`
         )
 
         // Notificar al admin de la barbería
-        if (shop?.phone) {
+        if (targetShop?.phone) {
           await sendWhatsApp(
-            shop.phone,
-            `💰 Pago verificado\nCliente: ${appointment.client_name}\nServicio: ${service?.name}\n${result.reason}`
+            targetShop.phone,
+            `💰 Pago verificado\nCliente: ${target.client_name}\nServicio: ${service?.name}\n${result.reason}`
           )
         }
       } else if (result.recipientIssue) {
