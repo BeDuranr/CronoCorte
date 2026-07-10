@@ -119,6 +119,9 @@ export default function BarberosPage() {
   const [addLoading, setAddLoading] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ name: '', specialty: '' })
+  const [grantId, setGrantId] = useState<string | null>(null)
+  const [grantEmail, setGrantEmail] = useState('')
+  const [grantLoading, setGrantLoading] = useState(false)
   const [deleteWorker, setDeleteWorker] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => { loadData() }, [])
@@ -172,6 +175,37 @@ export default function BarberosPage() {
       toast.error(err.message || 'Error al agregar barbero')
     } finally {
       setAddLoading(false)
+    }
+  }
+
+  // "Dar acceso": envía invitación por correo y enlaza la cuenta al barbero
+  // sin cuenta existente (no crea un registro nuevo).
+  const handleGrant = async (worker: Worker) => {
+    if (!grantEmail.trim()) {
+      return toast.error('Ingresa el email del barbero')
+    }
+    setGrantLoading(true)
+    try {
+      const res = await fetch('/api/workers/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          worker_id: worker.id,
+          name: worker.name,
+          email: grantEmail.trim(),
+          specialty: worker.specialty,
+          barbershop_id: shopId,
+        }),
+      })
+      if (!res.ok) { const err = await res.json(); throw new Error(err.message) }
+      toast.success(`Invitación enviada a ${grantEmail.trim()}`)
+      setGrantId(null)
+      setGrantEmail('')
+      loadData()
+    } catch (err: any) {
+      toast.error(err.message || 'Error al dar acceso')
+    } finally {
+      setGrantLoading(false)
     }
   }
 
@@ -368,6 +402,46 @@ export default function BarberosPage() {
                           </div>
                           {worker.specialty && (
                             <p className="text-xs text-[rgb(var(--fg-secondary))]">{worker.specialty}</p>
+                          )}
+
+                          {/* Barbero sin cuenta: dar acceso a la app */}
+                          {!worker.user_id && (
+                            grantId === worker.id ? (
+                              <div className="flex flex-col gap-2 mt-2">
+                                <input
+                                  type="email"
+                                  className="input text-sm py-1.5"
+                                  placeholder="Email del barbero"
+                                  value={grantEmail}
+                                  onChange={e => setGrantEmail(e.target.value)}
+                                  autoFocus
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleGrant(worker)}
+                                    disabled={grantLoading}
+                                    className="btn-primary py-1 px-3 text-sm flex items-center gap-1"
+                                  >
+                                    {grantLoading
+                                      ? <Loader2 size={12} className="animate-spin" />
+                                      : <><Mail size={12} /> Enviar invitación</>}
+                                  </button>
+                                  <button
+                                    onClick={() => { setGrantId(null); setGrantEmail('') }}
+                                    className="btn-secondary py-1 px-3 text-sm"
+                                  >
+                                    Cancelar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => { setGrantId(worker.id); setGrantEmail('') }}
+                                className="flex items-center gap-1 text-xs text-brand-red font-medium mt-2 hover:underline"
+                              >
+                                <Mail size={11} /> Dar acceso a la app
+                              </button>
+                            )
                           )}
                         </div>
 

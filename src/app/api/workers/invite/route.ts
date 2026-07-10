@@ -13,7 +13,7 @@ function createAuthAdminClient() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, email, specialty, barbershop_id } = await req.json()
+    const { name, email, specialty, barbershop_id, worker_id } = await req.json()
 
     if (!name || !email || !barbershop_id) {
       return NextResponse.json({ message: 'Faltan campos requeridos' }, { status: 400 })
@@ -36,6 +36,23 @@ export async function POST(req: NextRequest) {
 
     if (!shop) return NextResponse.json({ message: 'No autorizado' }, { status: 403 })
 
+    // Si viene worker_id → "dar acceso" a un barbero sin cuenta existente.
+    // Validamos que exista, pertenezca a la barbería y no tenga ya una cuenta.
+    if (worker_id) {
+      const { data: existing } = await admin
+        .from('workers')
+        .select('id, user_id, barbershop_id')
+        .eq('id', worker_id)
+        .single()
+
+      if (!existing || existing.barbershop_id !== barbershop_id) {
+        return NextResponse.json({ message: 'Barbero no encontrado' }, { status: 404 })
+      }
+      if (existing.user_id) {
+        return NextResponse.json({ message: 'Este barbero ya tiene una cuenta' }, { status: 400 })
+      }
+    }
+
     // Enviar invitación por email
     const { data: inviteData, error: inviteErr } = await authAdmin.auth.admin.inviteUserByEmail(email, {
       data: { full_name: name, role: 'worker' },
@@ -52,18 +69,28 @@ export async function POST(req: NextRequest) {
 
     const userId = inviteData.user?.id ?? null
 
-    // Crear registro del barbero
-    const { error: workerErr } = await admin
-      .from('workers')
-      .insert({
-        barbershop_id,
-        user_id: userId,
-        name,
-        specialty: specialty || null,
-        is_active: true,
-      })
+    if (worker_id) {
+      // Enlazar la cuenta al barbero existente (no crear otro registro)
+      const { error: updateErr } = await admin
+        .from('workers')
+        .update({ user_id: userId, name, specialty: specialty || null })
+        .eq('id', worker_id)
 
-    if (workerErr) throw workerErr
+      if (updateErr) throw updateErr
+    } else {
+      // Crear registro del barbero
+      const { error: workerErr } = await admin
+        .from('workers')
+        .insert({
+          barbershop_id,
+          user_id: userId,
+          name,
+          specialty: specialty || null,
+          is_active: true,
+        })
+
+      if (workerErr) throw workerErr
+    }
 
     return NextResponse.json({ success: true })
   } catch (err: any) {
