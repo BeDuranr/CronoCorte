@@ -44,25 +44,25 @@ describe('LoginForm', () => {
 
   it('renderiza los campos email y contraseña', () => {
     render(<LoginForm />)
-    expect(screen.getByPlaceholderText(/email/i)).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('••••••••')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('tucorreo@mail.com')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Contraseña')).toBeInTheDocument()
   })
 
   it('renderiza el botón de iniciar sesión', () => {
     render(<LoginForm />)
-    expect(screen.getByRole('button', { name: /iniciar sesión/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /entrar/i })).toBeInTheDocument()
   })
 
   it('el campo de contraseña comienza como type="password"', () => {
     render(<LoginForm />)
-    const passwordInput = screen.getByPlaceholderText('••••••••')
+    const passwordInput = screen.getByPlaceholderText('Contraseña')
     expect(passwordInput).toHaveAttribute('type', 'password')
   })
 
   it('el ojito cambia el tipo a text al hacer click', async () => {
     render(<LoginForm />)
-    const passwordInput = screen.getByPlaceholderText('••••••••')
-    const toggleBtn = screen.getByRole('button', { name: /mostrar contraseña/i })
+    const passwordInput = screen.getByPlaceholderText('Contraseña')
+    const toggleBtn = screen.getByRole('button', { name: /mostrar/i })
 
     expect(passwordInput).toHaveAttribute('type', 'password')
     await userEvent.click(toggleBtn)
@@ -71,26 +71,26 @@ describe('LoginForm', () => {
 
   it('el ojito vuelve a password al hacer doble click', async () => {
     render(<LoginForm />)
-    const passwordInput = screen.getByPlaceholderText('••••••••')
-    const toggleBtn = screen.getByRole('button', { name: /mostrar contraseña/i })
+    const passwordInput = screen.getByPlaceholderText('Contraseña')
+    const toggleBtn = screen.getByRole('button', { name: /mostrar/i })
 
     await userEvent.click(toggleBtn)
     expect(passwordInput).toHaveAttribute('type', 'text')
 
-    await userEvent.click(screen.getByRole('button', { name: /ocultar contraseña/i }))
+    await userEvent.click(screen.getByRole('button', { name: /ocultar/i }))
     expect(passwordInput).toHaveAttribute('type', 'password')
   })
 
   it('actualiza el valor del email al escribir', async () => {
     render(<LoginForm />)
-    const emailInput = screen.getByPlaceholderText(/email/i)
+    const emailInput = screen.getByPlaceholderText('tucorreo@mail.com')
     await userEvent.type(emailInput, 'test@example.com')
     expect(emailInput).toHaveValue('test@example.com')
   })
 
   it('actualiza el valor de la contraseña al escribir', async () => {
     render(<LoginForm />)
-    const passwordInput = screen.getByPlaceholderText('••••••••')
+    const passwordInput = screen.getByPlaceholderText('Contraseña')
     await userEvent.type(passwordInput, 'mi-clave-secreta')
     expect(passwordInput).toHaveValue('mi-clave-secreta')
   })
