@@ -89,6 +89,11 @@ export function calculateAvailableSlots({
   // Fecha de hoy en Chile (YYYY-MM-DD) para comparar si 'date' es hoy
   const todayChile = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
 
+  // Ninguna fecha anterior a hoy (Chile) genera slots. La UI nunca ofrece días
+  // pasados, pero lo garantizamos aquí como defensa. Ambas son 'YYYY-MM-DD', así
+  // que la comparación lexicográfica coincide con la cronológica.
+  if (date < todayChile) return slots
+
   // start_time puede venir como "09:00" o "09:00:00" desde PostgreSQL
   const startTime = availability.start_time.slice(0, 5)
   const endTime = availability.end_time.slice(0, 5)
