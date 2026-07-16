@@ -3,6 +3,7 @@ import {
   amountMatches,
   dedupeByGroup,
   selectReceiptTarget,
+  matchRecipient,
   type ParsedReceipt,
 } from '@/lib/receipt-matching'
 
@@ -13,7 +14,9 @@ function receipt(overrides: Partial<ParsedReceipt> = {}): ParsedReceipt {
     date: '10-07-2026',
     is_valid_receipt: true,
     confidence: 0.9,
-    recipient_ok: true,
+    recipient_name: null,
+    recipient_rut: null,
+    recipient_account: null,
     ...overrides,
   }
 }
@@ -106,5 +109,59 @@ describe('selectReceiptTarget', () => {
     ]
     const res = selectReceiptTarget(cands, receipt({ amount: 10000 }), expectedOf)
     expect(res).toEqual({ kind: 'target', target: cands[0] })
+  })
+})
+
+describe('matchRecipient', () => {
+  // Config típica de la barbería (mismo caso real de la imagen)
+  const info =
+    'Benjamin Elias Duran Rubio - 20.932.335-4 - Banco Bci - Cuenta Corriente - 32799195 - beduran.rubio@gmail.com'
+
+  it('el caso de la imagen: cuenta exacta + nombre en minúscula parcial → match', () => {
+    // Es el comprobante que antes se rechazaba por error.
+    const r = receipt({ recipient_name: 'benjamin duran', recipient_account: '32799195' })
+    expect(matchRecipient(r, info)).toBe('match')
+  })
+
+  it('coincide por N° de cuenta aunque el nombre no venga', () => {
+    expect(matchRecipient(receipt({ recipient_account: '32799195' }), info)).toBe('match')
+  })
+
+  it('coincide por cuenta enmascarada (sufijo)', () => {
+    expect(matchRecipient(receipt({ recipient_account: '****9195' }), info)).toBe('match')
+    expect(matchRecipient(receipt({ recipient_account: 'XXXXXX9195' }), info)).toBe('match')
+  })
+
+  it('coincide por RUT aunque el nombre esté distinto', () => {
+    const r = receipt({ recipient_name: 'B. Duran', recipient_rut: '20.932.335-4' })
+    expect(matchRecipient(r, info)).toBe('match')
+  })
+
+  it('coincide por nombre parcial cuando el banco no manda cuenta ni RUT', () => {
+    expect(matchRecipient(receipt({ recipient_name: 'BENJAMIN DURAN' }), info)).toBe('match')
+    expect(matchRecipient(receipt({ recipient_name: 'benjamín durán rubio' }), info)).toBe('match')
+  })
+
+  it('sin ningún dato de destinatario en el comprobante → match (no puede contradecir)', () => {
+    expect(matchRecipient(receipt(), info)).toBe('match')
+  })
+
+  it('rechaza si la cuenta es claramente otra', () => {
+    const r = receipt({ recipient_name: 'Otro Titular', recipient_account: '88881111' })
+    expect(matchRecipient(r, info)).toBe('mismatch')
+  })
+
+  it('rechaza si el RUT es claramente otro', () => {
+    expect(matchRecipient(receipt({ recipient_rut: '11.111.111-1' }), info)).toBe('mismatch')
+  })
+
+  it('cuenta correcta pero nombre distinto (OCR) → match: gana la señal fuerte', () => {
+    const r = receipt({ recipient_name: 'nombre mal leido', recipient_account: '32799195' })
+    expect(matchRecipient(r, info)).toBe('match')
+  })
+
+  it('solo el nombre no calza (sin cuenta ni RUT) → review, no rechazo', () => {
+    // No bloqueamos un pago real por un posible error de lectura del nombre.
+    expect(matchRecipient(receipt({ recipient_name: 'Pedro Soto' }), info)).toBe('review')
   })
 })

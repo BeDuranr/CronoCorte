@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { ParsedReceipt, amountMatches, dedupeByGroup, selectReceiptTarget } from '@/lib/receipt-matching'
+import { ParsedReceipt, amountMatches, dedupeByGroup, selectReceiptTarget, matchRecipient } from '@/lib/receipt-matching'
 import Groq from 'groq-sdk'
 import crypto from 'crypto'
 
@@ -121,8 +121,11 @@ async function readReceipt(imageUrl: string, transferInfo?: string | null): Prom
       year: 'numeric',
     })
 
+    // Le pedimos al modelo que EXTRAIGA los datos del destinatario, no que juzgue
+    // si coinciden: esa decisión la toma matchRecipient en código de forma
+    // determinística (ver receipt-matching.ts). Así evitamos falsos rechazos.
     const recipientBlock = transferInfo
-      ? `\nDatos del destinatario esperado:\n${transferInfo}\nReglas para recipient_ok:\n- true si el nombre del destinatario en el comprobante coincide (aunque sea parcial, sin importar mayúsculas/minúsculas)\n- true si el RUT del destinatario en el comprobante coincide\n- true si el número de cuenta coincide\n- true si el comprobante no muestra datos del destinatario\n- false SOLO si el comprobante muestra claramente un nombre o RUT diferente al esperado`
+      ? `\nExtrae además los datos del DESTINATARIO (a quién se transfirió, NUNCA el origen/emisor):\n- recipient_name: nombre del destinatario tal cual aparece, o null si no aparece\n- recipient_rut: RUT del destinatario si aparece, o null\n- recipient_account: número de cuenta del destinatario si aparece, aunque esté parcial o enmascarado (ej: "****9195"), o null`
       : ''
 
     const response = await groq.chat.completions.create({
@@ -143,7 +146,7 @@ Extrae el monto transferido, la fecha de la transacción y evalúa si la imagen 
 La fecha debe estar en formato DD-MM-YYYY o YYYY-MM-DD.
 IMPORTANTE: is_valid_receipt debe ser true si la imagen parece un comprobante bancario legítimo, independientemente de a quién fue la transferencia.${recipientBlock}
 Responde SOLO con JSON en este formato exacto (sin markdown):
-{"amount": <número o null>, "date": <"DD-MM-YYYY" o null>, "is_valid_receipt": <true/false>, "confidence": <0.0-1.0>, "recipient_ok": <true/false>}`,
+{"amount": <número o null>, "date": <"DD-MM-YYYY" o null>, "is_valid_receipt": <true/false>, "confidence": <0.0-1.0>, "recipient_name": <string o null>, "recipient_rut": <string o null>, "recipient_account": <string o null>}`,
             },
           ],
         },
@@ -159,7 +162,9 @@ Responde SOLO con JSON en este formato exacto (sin markdown):
         date: json.date ?? null,
         is_valid_receipt: json.is_valid_receipt === true,
         confidence: typeof json.confidence === 'number' ? json.confidence : 0,
-        recipient_ok: json.recipient_ok === true,
+        recipient_name: typeof json.recipient_name === 'string' ? json.recipient_name : null,
+        recipient_rut: typeof json.recipient_rut === 'string' ? json.recipient_rut : null,
+        recipient_account: typeof json.recipient_account === 'string' ? json.recipient_account : null,
       },
     }
   } catch (err) {
@@ -174,12 +179,15 @@ function evaluateReceipt(
   expectedAmount: number,
   transferInfo: string | null | undefined,
   todayChile: string
-): { verified: boolean; amount?: number; reason: string; dateIssue?: boolean; recipientIssue?: boolean } {
+): { verified: boolean; amount?: number; reason: string; dateIssue?: boolean; recipientIssue?: boolean; recipientReview?: boolean } {
   const amountOk = amountMatches(parsed, expectedAmount)
   const dateOk = isReceiptDateValid(parsed.date)
-  const recipientOk = transferInfo ? parsed.recipient_ok === true : true
+  // 'match' | 'mismatch' | 'review'. Sin transferInfo no podemos evaluar destinatario.
+  const recipient = transferInfo ? matchRecipient(parsed, transferInfo) : 'match'
 
-  if (amountOk && dateOk && !recipientOk) {
+  // Solo rechazamos por destinatario cuando hay evidencia fuerte de otro (cuenta/RUT
+  // distintos). Los casos ambiguos ('review') se aprueban y se avisan al admin.
+  if (amountOk && dateOk && recipient === 'mismatch') {
     return {
       verified: false,
       amount: parsed.amount ?? undefined,
@@ -197,12 +205,16 @@ function evaluateReceipt(
     }
   }
 
-  const verified = amountOk && dateOk && recipientOk
+  const verified = amountOk && dateOk && recipient !== 'mismatch'
+  const recipientReview = verified && recipient === 'review'
   return {
     verified,
     amount: parsed.amount ?? undefined,
+    recipientReview,
     reason: verified
-      ? `Comprobante válido: $${parsed.amount?.toLocaleString('es-CL')} del ${parsed.date}`
+      ? recipientReview
+        ? `Comprobante válido (⚠️ destinatario no confirmado, revisar): $${parsed.amount?.toLocaleString('es-CL')} del ${parsed.date}`
+        : `Comprobante válido: $${parsed.amount?.toLocaleString('es-CL')} del ${parsed.date}`
       : `No verificado: monto detectado $${parsed.amount?.toLocaleString('es-CL') ?? 'no legible'}, esperado $${expectedAmount.toLocaleString('es-CL')}`,
   }
 }
