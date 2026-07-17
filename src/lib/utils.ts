@@ -66,17 +66,22 @@ export function calculateAvailableSlots({
   existingAppointments,
   serviceDuration,
   date,
+  minAdvanceMinutes = 60,
 }: {
   availability: { start_time: string; end_time: string }
   existingAppointments: { starts_at: string; ends_at: string }[]
   serviceDuration: number
   date: string // 'yyyy-MM-dd'
+  // Anticipación mínima en minutos. El booking público usa 60 (default); la
+  // cita manual del admin pasa 0 para permitir cargar la hora actual / walk-ins.
+  // El bloqueo de días pasados se mantiene siempre, independiente de este valor.
+  minAdvanceMinutes?: number
 }): string[] {
   const slots: string[] = []
 
   // Anticipación mínima: no se pueden reservar horas que empiecen dentro de
-  // los próximos 60 minutos.
-  const MIN_ADVANCE_MINUTES = 60
+  // los próximos N minutos (0 = sin límite, para citas manuales del admin).
+  const MIN_ADVANCE_MINUTES = minAdvanceMinutes
 
   // "Ahora" en hora de Chile, INDEPENDIENTE de la zona del servidor.
   // Esto es clave: el booking-flow corre en el navegador (hora Chile) pero el

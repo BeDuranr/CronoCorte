@@ -54,6 +54,23 @@ export default async function CitasPage() {
     .eq('is_active', true)
     .order('name')
 
+  // Servicios activos — necesarios para el formulario de cita manual
+  const { data: services } = await supabase
+    .from('services')
+    .select('id, name, price, duration_minutes')
+    .eq('barbershop_id', barbershop.id)
+    .eq('is_active', true)
+    .order('name')
+
+  // Disponibilidad semanal de los barberos — alimenta el cálculo de slots libres
+  const workerIds = (workers ?? []).map(w => w.id)
+  const { data: availability } = workerIds.length
+    ? await supabase
+        .from('availability')
+        .select('worker_id, day_of_week, start_time, end_time')
+        .in('worker_id', workerIds)
+    : { data: [] }
+
   return (
     <>
       <Navbar role="admin" barbershopName={barbershop.name} />
@@ -61,6 +78,8 @@ export default async function CitasPage() {
         barbershopId={barbershop.id}
         appointments={(appointments as any[]) ?? []}
         workers={(workers as any[]) ?? []}
+        services={(services as any[]) ?? []}
+        availability={(availability as any[]) ?? []}
       />
     </>
   )

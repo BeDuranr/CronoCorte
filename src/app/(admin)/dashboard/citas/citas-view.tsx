@@ -1,21 +1,38 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { format, parseISO, isToday, isTomorrow, isYesterday } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { formatPrice } from '@/lib/utils'
+import { formatPrice, calculateAvailableSlots } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import {
   Calendar, Clock, CheckCircle2, XCircle, AlertCircle,
-  Search, Loader2, ChevronLeft, Phone, Download, X
+  Search, Loader2, ChevronLeft, Phone, Download, X, Plus
 } from 'lucide-react'
 import Link from 'next/link'
+
+interface Service {
+  id: string
+  name: string
+  price: number
+  duration_minutes: number
+}
+
+interface AvailabilityRow {
+  worker_id: string
+  day_of_week: number
+  start_time: string
+  end_time: string
+}
 
 interface Props {
   barbershopId: string
   appointments: any[]
   workers: { id: string; name: string }[]
+  services: Service[]
+  availability: AvailabilityRow[]
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
@@ -102,15 +119,324 @@ function CancelModal({
   )
 }
 
+// Construye starts_at/ends_at con offset local (hora de pared Chile),
+// mismo patrón que el booking-flow público.
+function buildTimestamps(dateStr: string, time: string, durationMin: number) {
+  const localStart = new Date(`${dateStr}T${time}:00`)
+  const offsetMinutes = localStart.getTimezoneOffset()
+  const offsetSign = offsetMinutes <= 0 ? '+' : '-'
+  const offsetAbs = Math.abs(offsetMinutes)
+  const offsetHH = String(Math.floor(offsetAbs / 60)).padStart(2, '0')
+  const offsetMM = String(offsetAbs % 60).padStart(2, '0')
+  const tz = `${offsetSign}${offsetHH}:${offsetMM}`
+  const startsAt = `${dateStr}T${time}:00${tz}`
+  const endLocal = new Date(localStart.getTime() + durationMin * 60_000)
+  const endHH = String(endLocal.getHours()).padStart(2, '0')
+  const endMM = String(endLocal.getMinutes()).padStart(2, '0')
+  const endsAt = `${dateStr}T${endHH}:${endMM}:00${tz}`
+  return { startsAt, endsAt }
+}
+
+// ── Modal de cita manual ──────────────────────────────────────────────────────
+function ManualAppointmentModal({
+  barbershopId,
+  workers,
+  services,
+  availability,
+  onClose,
+  onCreated,
+}: {
+  barbershopId: string
+  workers: { id: string; name: string }[]
+  services: Service[]
+  availability: AvailabilityRow[]
+  onClose: () => void
+  onCreated: (appt: any) => void
+}) {
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
+  const [workerId, setWorkerId] = useState(workers[0]?.id ?? '')
+  const [serviceId, setServiceId] = useState(services[0]?.id ?? '')
+  const [date, setDate] = useState(todayStr)
+  const [time, setTime] = useState('')
+  const [clientName, setClientName] = useState('')
+  const [clientPhone, setClientPhone] = useState('')
+  const [status, setStatus] = useState<'confirmed' | 'pending_payment'>('confirmed')
+  const [notes, setNotes] = useState('')
+  const [slots, setSlots] = useState<string[]>([])
+  const [loadingSlots, setLoadingSlots] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  const service = services.find(s => s.id === serviceId)
+  const worker = workers.find(w => w.id === workerId)
+  const duration = service?.duration_minutes || 60
+
+  // Recalcular slots libres cuando cambia barbero, servicio o fecha.
+  useEffect(() => {
+    let cancelled = false
+    setTime('')
+    if (!workerId || !serviceId || !date) { setSlots([]); return }
+
+    const load = async () => {
+      setLoadingSlots(true)
+      try {
+        // day_of_week local de la fecha elegida (evita desfase UTC)
+        const [yy, mm, dd] = date.split('-').map(Number)
+        const dow = new Date(yy, mm - 1, dd).getDay()
+        const avail = availability.find(a => a.worker_id === workerId && a.day_of_week === dow)
+        if (!avail) { if (!cancelled) setSlots([]); return }
+
+        let occupied: { starts_at: string; ends_at: string }[] = []
+        try {
+          const res = await fetch(`/api/availability?worker_id=${encodeURIComponent(workerId)}&date=${date}`)
+          if (res.ok) { const json = await res.json(); occupied = json.occupied ?? [] }
+        } catch { occupied = [] }
+
+        const available = calculateAvailableSlots({
+          availability: avail,
+          existingAppointments: occupied,
+          serviceDuration: duration,
+          date,
+          minAdvanceMinutes: 0, // admin: sin límite de anticipación
+        })
+        if (!cancelled) setSlots(available)
+      } finally {
+        if (!cancelled) setLoadingSlots(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [workerId, serviceId, date, duration, availability])
+
+  const handleSubmit = async () => {
+    if (!clientName.trim()) return toast.error('El nombre del cliente es requerido')
+    if (!time) return toast.error('Elige un horario')
+    if (!service || !worker) return toast.error('Elige barbero y servicio')
+
+    setSubmitting(true)
+    try {
+      const { startsAt, endsAt } = buildTimestamps(date, time, duration)
+      // Normalizar teléfono: prefijo +56 si el admin lo ingresó sin él.
+      let phone = clientPhone.trim()
+      if (phone && !phone.startsWith('+')) phone = `+56${phone.replace(/\D/g, '')}`
+
+      const res = await fetch('/api/appointments/admin-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          barbershop_id: barbershopId,
+          worker_id: workerId,
+          service_id: serviceId,
+          client_name: clientName.trim(),
+          client_phone: phone,
+          starts_at: startsAt,
+          ends_at: endsAt,
+          status,
+          notes: notes.trim() || null,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { toast.error(data.message || 'Error al crear la cita'); return }
+
+      onCreated({
+        id: data.id,
+        client_name: clientName.trim(),
+        client_phone: phone,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        status: data.status ?? status,
+        payment_verified: false,
+        notes: notes.trim() || null,
+        created_at: new Date().toISOString(),
+        services: { name: service.name, price: service.price, duration_minutes: service.duration_minutes },
+        workers: { name: worker.name },
+      })
+      toast.success('Cita creada')
+      onClose()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="card p-5 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <b className="text-sm text-[rgb(var(--fg))]">Nueva cita manual</b>
+          <button onClick={onClose} className="p-1 rounded hover:bg-[rgb(var(--bg-secondary))] text-[rgb(var(--fg-secondary))]">
+            <X size={14} />
+          </button>
+        </div>
+
+        {workers.length === 0 || services.length === 0 ? (
+          <p className="text-xs text-[rgb(var(--fg-secondary))]">
+            Necesitas al menos un barbero y un servicio activos para crear una cita.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {/* Barbero */}
+            <div>
+              <p className="label mb-1">Barbero</p>
+              <select className="input w-full" value={workerId} onChange={e => setWorkerId(e.target.value)}>
+                {workers.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              </select>
+            </div>
+
+            {/* Servicio */}
+            <div>
+              <p className="label mb-1">Servicio</p>
+              <select className="input w-full" value={serviceId} onChange={e => setServiceId(e.target.value)}>
+                {services.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} · {formatPrice(s.price)} · {s.duration_minutes} min
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Fecha */}
+            <div>
+              <p className="label mb-1">Fecha</p>
+              <input
+                type="date"
+                className="input w-full"
+                value={date}
+                min={todayStr}
+                onChange={e => setDate(e.target.value)}
+              />
+            </div>
+
+            {/* Slots */}
+            <div>
+              <p className="label mb-1">Horario</p>
+              {loadingSlots ? (
+                <div className="flex items-center gap-2 text-xs text-[rgb(var(--fg-secondary))] py-2">
+                  <Loader2 size={13} className="animate-spin" /> Buscando horarios…
+                </div>
+              ) : slots.length === 0 ? (
+                <p className="text-xs text-[rgb(var(--fg-secondary))] py-2">
+                  No hay horarios libres ese día para este barbero.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {slots.map(s => (
+                    <button
+                      key={s}
+                      onClick={() => setTime(s)}
+                      className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
+                        time === s
+                          ? 'border-brand-red text-brand-red bg-brand-red/5 font-semibold'
+                          : 'border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg-secondary))]'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Cliente */}
+            <div>
+              <p className="label mb-1">Nombre del cliente</p>
+              <input
+                className="input w-full"
+                placeholder="Ej: Juan Pérez"
+                value={clientName}
+                onChange={e => setClientName(e.target.value)}
+              />
+            </div>
+
+            {/* Teléfono (opcional) */}
+            <div>
+              <p className="label mb-1">Teléfono <span className="text-[rgb(var(--fg-secondary))]">(opcional)</span></p>
+              <input
+                className="input w-full"
+                placeholder="9 1234 5678"
+                value={clientPhone}
+                onChange={e => setClientPhone(e.target.value)}
+              />
+            </div>
+
+            {/* Estado */}
+            <div>
+              <p className="label mb-1">Estado</p>
+              <div className="flex gap-2">
+                {([
+                  { key: 'confirmed', label: 'Confirmada' },
+                  { key: 'pending_payment', label: 'Pendiente pago' },
+                ] as const).map(o => (
+                  <button
+                    key={o.key}
+                    onClick={() => setStatus(o.key)}
+                    className={`flex-1 text-xs px-3 py-1.5 rounded-lg border transition-all ${
+                      status === o.key
+                        ? 'border-brand-red text-brand-red bg-brand-red/5 font-semibold'
+                        : 'border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg-secondary))]'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Notas */}
+            <div>
+              <p className="label mb-1">Notas <span className="text-[rgb(var(--fg-secondary))]">(opcional)</span></p>
+              <input
+                className="input w-full"
+                placeholder="Observaciones internas"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 mt-1">
+              <button onClick={onClose} className="btn-secondary text-sm py-1.5 px-4">Cancelar</button>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="btn-primary text-sm py-1.5 px-4 flex items-center gap-1"
+              >
+                {submitting ? <Loader2 size={13} className="animate-spin" /> : 'Crear cita'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Vista de citas ────────────────────────────────────────────────────────────
-export function CitasView({ barbershopId, appointments: initial, workers }: Props) {
+export function CitasView({ barbershopId, appointments: initial, workers, services, availability }: Props) {
   const supabase = createClient()
+  const router = useRouter()
   const [appointments, setAppointments] = useState<any[]>(initial)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [workerFilter, setWorkerFilter] = useState<string>('all')
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [cancelAppt, setCancelAppt] = useState<any | null>(null)
+  const [showManual, setShowManual] = useState(false)
+
+  // Abrir el modal automáticamente si se llega con ?nuevo=1 (botón del dashboard)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('nuevo') === '1') setShowManual(true)
+  }, [])
+
+  const closeManual = () => {
+    setShowManual(false)
+    // Limpiar el ?nuevo=1 de la URL sin recargar
+    if (new URLSearchParams(window.location.search).get('nuevo')) {
+      router.replace('/dashboard/citas')
+    }
+  }
+
+  const addCreated = (appt: any) => {
+    setAppointments(prev => [appt, ...prev])
+  }
 
   // Conteos por estado
   const counts = useMemo(() => {
@@ -222,6 +548,17 @@ export function CitasView({ barbershopId, appointments: initial, workers }: Prop
         />
       )}
 
+      {showManual && (
+        <ManualAppointmentModal
+          barbershopId={barbershopId}
+          workers={workers}
+          services={services}
+          availability={availability}
+          onClose={closeManual}
+          onCreated={addCreated}
+        />
+      )}
+
       <main className="max-w-4xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex items-center gap-3 mb-5">
@@ -235,6 +572,12 @@ export function CitasView({ barbershopId, appointments: initial, workers }: Prop
             <h1 className="text-2xl font-bold text-[rgb(var(--fg))]">Citas</h1>
             <p className="text-sm text-[rgb(var(--fg-secondary))]">Últimos 30 días + próximos 30 días</p>
           </div>
+          <button
+            onClick={() => setShowManual(true)}
+            className="btn-primary flex items-center gap-1.5 text-sm py-2 px-3"
+          >
+            <Plus size={14} /> Nueva cita
+          </button>
           <button
             onClick={exportCSV}
             className="btn-secondary flex items-center gap-1.5 text-sm py-2 px-3"
