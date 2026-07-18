@@ -21,7 +21,6 @@ interface Service {
 }
 
 interface AvailabilityRow {
-  worker_id: string
   day_of_week: number
   start_time: string
   end_time: string
@@ -170,19 +169,19 @@ function ManualAppointmentModal({
   const worker = workers.find(w => w.id === workerId)
   const duration = service?.duration_minutes || 60
 
-  // Días de la semana (0–6) que este barbero atiende, según su availability.
-  const workerDows = useMemo(
-    () => new Set(availability.filter(a => a.worker_id === workerId).map(a => a.day_of_week)),
-    [availability, workerId]
+  // Días de la semana (0–6) que atiende la barbería, según su availability.
+  const openDows = useMemo(
+    () => new Set(availability.map(a => a.day_of_week)),
+    [availability]
   )
 
-  // Próximas fechas disponibles: días futuros cuyo day_of_week atiende el barbero.
+  // Próximas fechas disponibles: días futuros cuyo day_of_week atiende la barbería.
   const availableDates = useMemo(() => {
     const [ty, tm, td] = todayStr.split('-').map(Number)
     const out: { value: string; weekday: string; day: string; month: string }[] = []
     for (let i = 0; i < 60 && out.length < 30; i++) {
       const d = new Date(ty, tm - 1, td + i)
-      if (!workerDows.has(d.getDay())) continue
+      if (!openDows.has(d.getDay())) continue
       const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
       out.push({
         value,
@@ -192,7 +191,7 @@ function ManualAppointmentModal({
       })
     }
     return out
-  }, [todayStr, workerDows])
+  }, [todayStr, openDows])
 
   // Si la fecha elegida ya no está disponible (cambió el barbero), salta a la primera.
   useEffect(() => {
@@ -212,7 +211,7 @@ function ManualAppointmentModal({
         // day_of_week local de la fecha elegida (evita desfase UTC)
         const [yy, mm, dd] = date.split('-').map(Number)
         const dow = new Date(yy, mm - 1, dd).getDay()
-        const avail = availability.find(a => a.worker_id === workerId && a.day_of_week === dow)
+        const avail = availability.find(a => a.day_of_week === dow)
         if (!avail) { if (!cancelled) setSlots([]); return }
 
         let occupied: { starts_at: string; ends_at: string }[] = []
@@ -328,7 +327,7 @@ function ManualAppointmentModal({
               <p className="label mb-1">Fecha</p>
               {availableDates.length === 0 ? (
                 <p className="text-xs text-[rgb(var(--fg-secondary))] py-2">
-                  Este barbero no tiene días de atención configurados.
+                  No hay días de atención configurados. Revísalos en Configuración.
                 </p>
               ) : (
                 <div className="-mx-1 px-1 overflow-x-auto">

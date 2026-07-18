@@ -62,14 +62,14 @@ export default async function CitasPage() {
     .eq('is_active', true)
     .order('name')
 
-  // Disponibilidad semanal de los barberos — alimenta el cálculo de slots libres
-  const workerIds = (workers ?? []).map(w => w.id)
-  const { data: availability } = workerIds.length
-    ? await supabase
-        .from('availability')
-        .select('worker_id, day_of_week, start_time, end_time')
-        .in('worker_id', workerIds)
-    : { data: [] }
+  // Disponibilidad semanal — a nivel de barbería (worker_id NULL), igual que
+  // la página pública. Alimenta el cálculo de slots libres del modal manual.
+  const { data: availability } = await supabase
+    .from('availability')
+    .select('day_of_week, start_time, end_time')
+    .eq('barbershop_id', barbershop.id)
+    .eq('is_active', true)
+    .order('day_of_week')
 
   return (
     <>
