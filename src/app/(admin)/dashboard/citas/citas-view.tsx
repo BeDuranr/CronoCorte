@@ -170,6 +170,36 @@ function ManualAppointmentModal({
   const worker = workers.find(w => w.id === workerId)
   const duration = service?.duration_minutes || 60
 
+  // Días de la semana (0–6) que este barbero atiende, según su availability.
+  const workerDows = useMemo(
+    () => new Set(availability.filter(a => a.worker_id === workerId).map(a => a.day_of_week)),
+    [availability, workerId]
+  )
+
+  // Próximas fechas disponibles: días futuros cuyo day_of_week atiende el barbero.
+  const availableDates = useMemo(() => {
+    const [ty, tm, td] = todayStr.split('-').map(Number)
+    const out: { value: string; weekday: string; day: string; month: string }[] = []
+    for (let i = 0; i < 60 && out.length < 30; i++) {
+      const d = new Date(ty, tm - 1, td + i)
+      if (!workerDows.has(d.getDay())) continue
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      out.push({
+        value,
+        weekday: format(d, 'EEE', { locale: es }),
+        day: format(d, 'd'),
+        month: format(d, 'MMM', { locale: es }),
+      })
+    }
+    return out
+  }, [todayStr, workerDows])
+
+  // Si la fecha elegida ya no está disponible (cambió el barbero), salta a la primera.
+  useEffect(() => {
+    if (availableDates.length === 0) return
+    if (!availableDates.some(d => d.value === date)) setDate(availableDates[0].value)
+  }, [availableDates]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Recalcular slots libres cuando cambia barbero, servicio o fecha.
   useEffect(() => {
     let cancelled = false
@@ -296,13 +326,31 @@ function ManualAppointmentModal({
             {/* Fecha */}
             <div>
               <p className="label mb-1">Fecha</p>
-              <input
-                type="date"
-                className="input w-full"
-                value={date}
-                min={todayStr}
-                onChange={e => setDate(e.target.value)}
-              />
+              {availableDates.length === 0 ? (
+                <p className="text-xs text-[rgb(var(--fg-secondary))] py-2">
+                  Este barbero no tiene días de atención configurados.
+                </p>
+              ) : (
+                <div className="-mx-1 px-1 overflow-x-auto">
+                  <div className="flex gap-2 min-w-max pb-1">
+                    {availableDates.map(d => (
+                      <button
+                        key={d.value}
+                        onClick={() => setDate(d.value)}
+                        className={`flex flex-col items-center py-2 px-3 rounded-lg border transition-all shrink-0 ${
+                          date === d.value
+                            ? 'border-brand-red text-brand-red bg-brand-red/5 font-semibold'
+                            : 'border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg-secondary))]'
+                        }`}
+                      >
+                        <span className="text-[9px] uppercase">{d.weekday.slice(0, 3)}</span>
+                        <span className="text-sm font-bold leading-tight">{d.day}</span>
+                        <span className="text-[9px] uppercase">{d.month}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Slots */}
