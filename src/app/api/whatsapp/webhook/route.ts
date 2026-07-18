@@ -11,6 +11,12 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID!
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN!
 const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM!
 
+// Plantilla aprobada por Meta para avisar al dueño de un pago verificado.
+// Un mensaje libre (Body) al dueño solo se entrega dentro de la ventana de 24h
+// desde su última interacción con el número; fuera de ella Meta lo rechaza
+// (error 63016). La plantilla es business-initiated y no tiene esa limitación.
+const TEMPLATE_ADMIN_PAGO = process.env.TWILIO_TEMPLATE_ADMIN_PAGO ?? ''
+
 async function sendWhatsApp(to: string, body: string) {
   const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`
   const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64')
@@ -26,6 +32,78 @@ async function sendWhatsApp(to: string, body: string) {
       Body: body,
     }),
   })
+}
+
+// Normaliza un teléfono chileno al formato E.164 (+56XXXXXXXXX) que exige
+// WhatsApp. Acepta "934135145", "+56 9 3413 5145", "56934135145", etc.
+// Devuelve null si no se puede formar un número válido.
+function normalizeChileanPhone(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  let digits = raw.replace(/[^\d]/g, '')
+  if (digits.startsWith('56')) digits = digits.slice(2)
+  // Móvil chileno: 9 dígitos empezando en 9.
+  if (digits.length === 9 && digits.startsWith('9')) return `+56${digits}`
+  return null
+}
+
+// Sanitiza valores para variables de plantilla (Meta rechaza \n, tabs, $, #, %,
+// +, 5+ espacios seguidos). Mismo criterio que /api/whatsapp/notify.
+function ensureString(value: unknown) {
+  return (value == null ? '' : String(value))
+    .replace(/[\r\n]+/g, ' - ')
+    .replace(/\t+/g, ' ')
+    .replace(/\+/g, 'y')
+    .replace(/[$#%]/g, '')
+    .replace(/ {2,}/g, ' ')
+    .trim()
+}
+
+// Avisa al dueño de la barbería de un pago verificado. Usa plantilla aprobada
+// si está configurada (entrega garantizada), con fallback al mensaje libre.
+// Loguea la respuesta de Twilio para diagnosticar entregas fallidas.
+async function notifyAdminPago(
+  shopPhone: string | null | undefined,
+  vars: { cliente: string; servicio: string; detalle: string },
+) {
+  const to = normalizeChileanPhone(shopPhone)
+  if (!to) {
+    console.warn('notifyAdminPago: teléfono de barbería inválido, se omite aviso:', shopPhone)
+    return
+  }
+
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`
+  const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64')
+
+  const params = new URLSearchParams({ From: TWILIO_WHATSAPP_FROM, To: `whatsapp:${to}` })
+  if (TEMPLATE_ADMIN_PAGO) {
+    params.set('ContentSid', TEMPLATE_ADMIN_PAGO)
+    params.set('ContentVariables', JSON.stringify({
+      '1': ensureString(vars.cliente),
+      '2': ensureString(vars.servicio),
+      '3': ensureString(vars.detalle),
+    }))
+  } else {
+    params.set('Body', `💰 Pago verificado\nCliente: ${vars.cliente}\nServicio: ${vars.servicio}\n${vars.detalle}`)
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params,
+    })
+    const data = await res.json().catch(() => ({}))
+    console.log('notifyAdminPago Twilio response:', JSON.stringify({
+      usedTemplate: !!TEMPLATE_ADMIN_PAGO,
+      httpStatus: res.status,
+      sid: data.sid,
+      status: data.status,
+      errorCode: data.error_code,
+      errorMessage: data.error_message,
+    }))
+  } catch (err) {
+    console.error('notifyAdminPago error:', err)
+  }
 }
 
 // Retorna true si la fecha del comprobante es hoy o ayer (Chile, tolerancia nocturna)
@@ -376,13 +454,13 @@ export async function POST(req: NextRequest) {
           `Te recordaremos 24h y 1h antes. ¡Nos vemos pronto! ✂️`
         )
 
-        // Notificar al admin de la barbería
-        if (targetShop?.phone) {
-          await sendWhatsApp(
-            targetShop.phone,
-            `💰 Pago verificado\nCliente: ${target.client_name}\nServicio: ${service?.name}\n${result.reason}`
-          )
-        }
+        // Notificar al admin de la barbería (plantilla si está configurada;
+        // si no, mensaje libre — sujeto a la ventana de 24h de WhatsApp).
+        await notifyAdminPago(targetShop?.phone, {
+          cliente: target.client_name ?? 'Cliente',
+          servicio: service?.name ?? 'Servicio',
+          detalle: result.reason ?? '',
+        })
       } else if (result.recipientIssue) {
         await sendWhatsApp(
           from,
