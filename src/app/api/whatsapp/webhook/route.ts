@@ -245,6 +245,10 @@ Responde SOLO con JSON en este formato exacto (sin markdown):
       // preámbulo del modelo (aunque se le pida "solo JSON") cortaba la respuesta
       // a la mitad y el JSON.parse fallaba con TODO comprobante, calzara o no.
       max_tokens: 600,
+      // qwen3 razona por defecto (bloque <think>...</think> largo antes de
+      // responder) y eso agotaba max_tokens antes de llegar al JSON. No
+      // necesitamos razonamiento para extraer datos de una imagen.
+      reasoning_effort: 'none',
     })
 
     const text = response.choices[0].message.content?.trim() ?? ''
