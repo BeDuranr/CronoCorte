@@ -35,7 +35,7 @@ export default async function PublicBookingPage({ params }: Props) {
 
   const { data: barbershop } = await supabase
     .from('barbershops')
-    .select('id, name, slug, description, address, phone, instagram, logo_url, transfer_info, agent_name, accent_color')
+    .select('id, name, slug, description, address, phone, instagram, logo_url, transfer_info, agent_name, agent_enabled, accent_color')
     .eq('slug', params.slug)
     .eq('is_active', true)
     .single()
@@ -77,11 +77,13 @@ export default async function PublicBookingPage({ params }: Props) {
         workers={(workers as any[]) ?? []}
         availability={(availability as any[]) ?? []}
       />
-      <ChatWidget
-        barbershopId={barbershop.id}
-        barbershopSlug={barbershop.slug}
-        agentName={(barbershop as any).agent_name ?? 'Asistente'}
-      />
+      {(barbershop as any).agent_enabled && (
+        <ChatWidget
+          barbershopId={barbershop.id}
+          barbershopSlug={barbershop.slug}
+          agentName={(barbershop as any).agent_name ?? 'Asistente'}
+        />
+      )}
     </>
   )
 }

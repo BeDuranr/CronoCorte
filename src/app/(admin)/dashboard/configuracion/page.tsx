@@ -600,7 +600,7 @@ export default function ConfiguracionPage() {
             <div className="card p-4 flex items-center justify-between">
               <div>
                 <p className="font-semibold text-[rgb(var(--fg))]">Agente IA activo</p>
-                <p className="text-xs text-[rgb(var(--fg-secondary))] mt-0.5">Responde automáticamente mensajes de WhatsApp</p>
+                <p className="text-xs text-[rgb(var(--fg-secondary))] mt-0.5">Muestra el asistente de recomendación de cortes en tu página de reservas</p>
               </div>
               <button
                 onClick={() => setShop(s => s ? { ...s, agent_enabled: !s.agent_enabled } : s)}
