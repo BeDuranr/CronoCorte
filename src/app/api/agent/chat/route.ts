@@ -121,6 +121,9 @@ ESTILO DE RESPUESTA:
           { role: 'user', content },
         ],
         max_tokens: 1024,
+        // qwen3 razona por defecto y antepone un bloque <think>...</think> al
+        // texto final — sin esto, ese bloque se enviaría tal cual al cliente.
+        reasoning_effort: 'none',
       })
       return NextResponse.json({ reply: response.choices[0].message.content })
     }
