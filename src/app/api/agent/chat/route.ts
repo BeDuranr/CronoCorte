@@ -23,7 +23,7 @@ function checkRateLimit(ip: string): boolean {
   return true
 }
 
-const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
+const VISION_MODEL = 'qwen/qwen3.6-27b'
 const TEXT_MODEL   = 'llama-3.3-70b-versatile'
 
 export async function POST(req: NextRequest) {

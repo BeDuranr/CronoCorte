@@ -5,7 +5,7 @@ import Groq from 'groq-sdk'
 import crypto from 'crypto'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
-const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
+const VISION_MODEL = 'qwen/qwen3.6-27b'
 
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID!
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN!
@@ -157,6 +157,18 @@ function isReceiptDateValid(receiptDate: string | null): boolean {
   }
 }
 
+// Extrae el primer objeto JSON balanceado de un texto, tolerando texto extra
+// antes/después (el modelo a veces agrega una frase aunque se le pida "solo JSON").
+function extractJsonObject(text: string): any {
+  const stripped = text.replace(/```json?\n?/gi, '').replace(/```/g, '').trim()
+  const start = stripped.indexOf('{')
+  const end = stripped.lastIndexOf('}')
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error('No se encontró un objeto JSON en la respuesta del modelo')
+  }
+  return JSON.parse(stripped.slice(start, end + 1))
+}
+
 // Lee el comprobante con el modelo de visión (una sola llamada) y devuelve los
 // campos crudos. No decide si es válido: eso lo hace evaluateReceipt contra un
 // monto esperado concreto. `transferInfo` se incluye para poder evaluar el
@@ -229,11 +241,20 @@ Responde SOLO con JSON en este formato exacto (sin markdown):
           ],
         },
       ],
-      max_tokens: 256,
+      // 256 se quedaba corto: con los campos de destinatario agregados, cualquier
+      // preámbulo del modelo (aunque se le pida "solo JSON") cortaba la respuesta
+      // a la mitad y el JSON.parse fallaba con TODO comprobante, calzara o no.
+      max_tokens: 600,
     })
 
     const text = response.choices[0].message.content?.trim() ?? ''
-    const json = JSON.parse(text.replace(/```json?\n?/g, '').replace(/```/g, ''))
+    let json: any
+    try {
+      json = extractJsonObject(text)
+    } catch (parseErr) {
+      console.error('Receipt JSON parse error. Raw model output:', text)
+      throw parseErr
+    }
     return {
       parsed: {
         amount: json.amount ?? null,
