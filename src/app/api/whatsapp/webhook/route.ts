@@ -345,7 +345,6 @@ export async function POST(req: NextRequest) {
     }
 
     const from = body.get('From')?.replace('whatsapp:', '') ?? ''
-    const messageBody = body.get('Body') ?? ''
     const numMedia = parseInt(body.get('NumMedia') ?? '0')
     const mediaUrl = numMedia > 0 ? body.get('MediaUrl0') : null
     const mediaType = numMedia > 0 ? body.get('MediaContentType0') : null
@@ -362,7 +361,7 @@ export async function POST(req: NextRequest) {
       .select(`
         id, client_name, status, payment_verified, booking_group_id, total_amount, starts_at,
         services(name, price),
-        barbershops(id, name, phone, agent_enabled, agent_name, agent_tone, agent_prompt_custom, transfer_info, slug)
+        barbershops(id, name, phone, transfer_info)
       `)
       .eq('client_phone', from)
       .eq('status', 'pending_payment')
@@ -370,9 +369,6 @@ export async function POST(req: NextRequest) {
 
     // Deduplicar reservas grupales (comparten booking_group_id): una candidata por reserva.
     const candidates = dedupeByGroup((pendingAppointments as any[]) ?? [])
-
-    // Para el branch del agente IA usamos la cita más próxima como contexto.
-    const shop = candidates[0]?.barbershops as any
 
     // ── Si el cliente envió una imagen, intentar verificar como comprobante ──
     if (mediaUrl && mediaType?.startsWith('image/') && candidates.length > 0) {
@@ -488,8 +484,7 @@ export async function POST(req: NextRequest) {
 
     // ── El cliente envió un archivo que NO es imagen (PDF, audio, video…) ──
     // El modelo de visión solo procesa imágenes, así que no se puede leer como
-    // comprobante. Interceptamos aquí para que el archivo no caiga en el agente IA
-    // (que respondería fuera de contexto) y guiamos al cliente si está pagando.
+    // comprobante. Interceptamos aquí para guiar al cliente si está pagando.
     if (mediaUrl && !mediaType?.startsWith('image/')) {
       if (candidates.length > 0) {
         await sendWhatsApp(
@@ -504,28 +499,8 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // ── Si la barbería tiene agente IA, derivar al agente ──
-    if (shop?.agent_enabled && messageBody) {
-      const agentRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/agent/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: messageBody,
-          from,
-          barbershop_id: shop.id,
-          barbershop_slug: shop.slug,
-          history: [],
-        }),
-      })
-
-      const { reply } = await agentRes.json()
-      if (reply) await sendWhatsApp(from, reply)
-
-      return new NextResponse('<?xml version="1.0"?><Response></Response>', {
-        headers: { 'Content-Type': 'text/xml' },
-      })
-    }
-
+    // Mensajes de texto que no son comprobante ni archivo: no se auto-responden
+    // por WhatsApp. El agente de recomendación de cortes solo vive en la página web.
     return new NextResponse('<?xml version="1.0"?><Response></Response>', {
       headers: { 'Content-Type': 'text/xml' },
     })
