@@ -36,8 +36,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    const { data: blocked, error: blockedError } = await supabase
+      .from('blocked_slots')
+      .select('starts_at, ends_at')
+      .eq('worker_id', workerId)
+      .gte('starts_at', `${prevStr}T00:00:00`)
+      .lte('starts_at', `${nextStr}T23:59:59`)
+
+    if (blockedError) {
+      return NextResponse.json({ error: blockedError.message }, { status: 500 })
+    }
+
     // Devolver SOLO los rangos (sin ningún dato personal)
-    const occupied = (data ?? []).map(a => ({ starts_at: a.starts_at, ends_at: a.ends_at }))
+    const occupied = [...(data ?? []), ...(blocked ?? [])].map(a => ({
+      starts_at: a.starts_at,
+      ends_at: a.ends_at,
+    }))
 
     return NextResponse.json({ occupied })
   } catch (err: any) {

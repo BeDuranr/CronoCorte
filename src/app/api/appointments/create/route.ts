@@ -140,6 +140,22 @@ export async function POST(req: NextRequest) {
           { status: 409 }
         )
       }
+
+      const { data: blockedConflict } = await supabase
+        .from('blocked_slots')
+        .select('id')
+        .eq('worker_id', worker_id)
+        .lt('starts_at', b.ends_at)
+        .gt('ends_at', b.starts_at)
+        .limit(1)
+        .maybeSingle()
+
+      if (blockedConflict) {
+        return NextResponse.json(
+          { error: 'Uno de los horarios ya fue reservado. Por favor elige otro.' },
+          { status: 409 }
+        )
+      }
     }
 
     // ── Validar que los bloques entre sí no se solapen ────────────────

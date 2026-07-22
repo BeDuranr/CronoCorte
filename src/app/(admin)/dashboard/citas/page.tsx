@@ -71,6 +71,17 @@ export default async function CitasPage() {
     .eq('is_active', true)
     .order('day_of_week')
 
+  const workerIds = (workers ?? []).map(w => w.id)
+  const { data: blockedSlots } = workerIds.length
+    ? await supabase
+        .from('blocked_slots')
+        .select('id, worker_id, starts_at, ends_at, reason')
+        .in('worker_id', workerIds)
+        .gte('starts_at', from.toISOString())
+        .lte('starts_at', to.toISOString())
+        .order('starts_at', { ascending: true })
+    : { data: [] }
+
   return (
     <>
       <Navbar role="admin" barbershopName={barbershop.name} />
@@ -80,6 +91,7 @@ export default async function CitasPage() {
         workers={(workers as any[]) ?? []}
         services={(services as any[]) ?? []}
         availability={(availability as any[]) ?? []}
+        blockedSlots={(blockedSlots as any[]) ?? []}
       />
     </>
   )

@@ -64,6 +64,18 @@ export default async function AgendaPage() {
     a => new Date(a.starts_at).toLocaleDateString('en-CA', { timeZone: 'America/Santiago' }) === todayStr
   )
 
+  const { data: todayBlockedRaw } = await supabase
+    .from('blocked_slots')
+    .select('id, worker_id, starts_at, ends_at, reason')
+    .eq('worker_id', worker.id)
+    .gte('starts_at', `${prevStr}T00:00:00`)
+    .lte('starts_at', `${nextStr}T23:59:59`)
+    .order('starts_at', { ascending: true })
+
+  const todayBlocked = (todayBlockedRaw ?? []).filter(
+    b => new Date(b.starts_at).toLocaleDateString('en-CA', { timeZone: 'America/Santiago' }) === todayStr
+  )
+
   // This week's stats
   const weekStart = new Date(today)
   weekStart.setDate(today.getDate() - today.getDay() + 1)
@@ -91,6 +103,7 @@ export default async function AgendaPage() {
       <AgendaView
         worker={{ ...worker, barbershop } as any}
         todayAppointments={(todayAppts as any[]) ?? []}
+        todayBlockedSlots={(todayBlocked as any[]) ?? []}
         weekStats={{
           total: weekAppts?.length ?? 0,
           completed: weekAppts?.filter(a => a.status === 'completed').length ?? 0,
