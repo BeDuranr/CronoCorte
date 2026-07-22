@@ -12,6 +12,7 @@ import {
   Search, Loader2, ChevronLeft, Phone, Download, X, Plus, BanIcon, Trash2
 } from 'lucide-react'
 import Link from 'next/link'
+import { BlockTimeModal } from '@/components/scheduling/block-time-modal'
 
 interface Service {
   id: string
@@ -464,94 +465,6 @@ function ManualAppointmentModal({
   )
 }
 
-// ── Modal de bloqueo de horario (admin) ─────────────────────────────────────────
-// Hoy solo existe un barbero por barbería, así que no hay selector de barbero:
-// el bloqueo siempre apunta al único worker. La policy de RLS ya soporta
-// cualquier worker de la barbería si en el futuro se agregan más.
-function BlockAdminModal({
-  workerId,
-  onConfirm,
-  onClose,
-}: {
-  workerId: string
-  onConfirm: (workerId: string, dateStr: string, startTime: string, endTime: string, reason: string) => Promise<void>
-  onClose: () => void
-}) {
-  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
-  const [date, setDate] = useState(todayStr)
-  const [startTime, setStartTime] = useState('09:00')
-  const [endTime, setEndTime] = useState('10:00')
-  const [reason, setReason] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const invalid = endTime <= startTime
-
-  const handleConfirm = async () => {
-    if (invalid) return
-    setLoading(true)
-    await onConfirm(workerId, date, startTime, endTime, reason)
-    setLoading(false)
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
-      <div className="card p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <BanIcon size={14} className="text-[rgb(var(--fg-secondary))]" />
-            <b className="text-sm text-[rgb(var(--fg))]">Bloquear horario</b>
-          </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-[rgb(var(--bg-secondary))] text-[rgb(var(--fg-secondary))]">
-            <X size={14} />
-          </button>
-        </div>
-
-        <p className="label mb-1">Fecha</p>
-        <input
-          type="date"
-          className="input w-full mb-3"
-          value={date}
-          onChange={e => setDate(e.target.value)}
-        />
-
-        <div className="flex gap-3 mb-4">
-          <div className="flex-1">
-            <p className="label mb-1">Desde</p>
-            <input type="time" className="input w-full" value={startTime} onChange={e => setStartTime(e.target.value)} />
-          </div>
-          <div className="flex-1">
-            <p className="label mb-1">Hasta</p>
-            <input type="time" className="input w-full" value={endTime} onChange={e => setEndTime(e.target.value)} />
-          </div>
-        </div>
-        {invalid && (
-          <p className="text-[10.5px] text-brand-red -mt-2.5 mb-3">La hora de fin debe ser posterior a la de inicio.</p>
-        )}
-
-        <p className="label mb-2">Motivo (opcional)</p>
-        <input
-          className="input w-full mb-5"
-          placeholder="Ej: Trámite, vacaciones..."
-          value={reason}
-          onChange={e => setReason(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleConfirm()}
-        />
-
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary text-sm py-1.5 px-4">Cancelar</button>
-          <button
-            onClick={handleConfirm}
-            disabled={loading || invalid}
-            className="btn-primary text-sm py-1.5 px-4 bg-brand-red hover:bg-[#bd2f39] flex items-center gap-1.5 disabled:opacity-50"
-          >
-            {loading ? <Loader2 size={13} className="animate-spin" /> : <><BanIcon size={13} /> Bloquear</>}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Vista de citas ────────────────────────────────────────────────────────────
 export function CitasView({ barbershopId, appointments: initial, workers, services, availability, blockedSlots: initialBlocked }: Props) {
   const supabase = createClient()
@@ -585,37 +498,8 @@ export function CitasView({ barbershopId, appointments: initial, workers, servic
     setAppointments(prev => [appt, ...prev])
   }
 
-  const confirmBlockAdmin = async (workerId: string, dateStr: string, startTime: string, endTime: string, reason: string) => {
-    // buildTimestamps calcula el offset local a partir de fecha+hora; usamos
-    // solo su startsAt (duración 0) para inicio y fin por separado.
-    const { startsAt } = buildTimestamps(dateStr, startTime, 0)
-    const { startsAt: endsAt } = buildTimestamps(dateStr, endTime, 0)
-
-    const overlapsAppt = appointments.some(a =>
-      a.status !== 'cancelled' &&
-      a.workers?.name === workers.find(w => w.id === workerId)?.name &&
-      new Date(a.starts_at) < new Date(endsAt) && new Date(a.ends_at) > new Date(startsAt)
-    )
-    if (overlapsAppt) {
-      toast.error('Ya hay una cita en ese horario')
-      return
-    }
-
-    const { data, error } = await supabase
-      .from('blocked_slots')
-      .insert({ worker_id: workerId, starts_at: startsAt, ends_at: endsAt, reason: reason.trim() || null })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('confirmBlockAdmin error:', error)
-      toast.error(error.code === '23P01' ? 'Ese horario se solapa con otro bloqueo' : 'Error al bloquear el horario')
-      return
-    }
-
-    setBlockedSlots(prev => [...prev, data].sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()))
-    setShowBlock(false)
-    toast.success('Horario bloqueado')
+  const addBlocked = (block: BlockedSlot) => {
+    setBlockedSlots(prev => [...prev, block].sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()))
   }
 
   const unblockAdmin = async (id: string) => {
@@ -752,9 +636,10 @@ export function CitasView({ barbershopId, appointments: initial, workers, servic
       )}
 
       {showBlock && workers[0] && (
-        <BlockAdminModal
+        <BlockTimeModal
           workerId={workers[0].id}
-          onConfirm={confirmBlockAdmin}
+          availability={availability}
+          onCreated={addBlocked}
           onClose={() => setShowBlock(false)}
         />
       )}

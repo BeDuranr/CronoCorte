@@ -9,8 +9,9 @@ import toast from 'react-hot-toast'
 import {
   Calendar, TrendingUp, Scissors, CheckCircle2,
   ChevronLeft, ChevronRight, Phone, Link as LinkIcon,
-  BanIcon, Loader2, X, Trash2
+  BanIcon, Loader2, Trash2
 } from 'lucide-react'
+import { BlockTimeModal } from '@/components/scheduling/block-time-modal'
 
 interface Worker {
   id: string
@@ -29,10 +30,17 @@ interface BlockedSlot {
   reason: string | null
 }
 
+interface AvailabilityRow {
+  day_of_week: number
+  start_time: string
+  end_time: string
+}
+
 interface Props {
   worker: Worker
   todayAppointments: any[]
   todayBlockedSlots: BlockedSlot[]
+  availability: AvailabilityRow[]
   weekStats: { total: number; completed: number; revenue: number }
 }
 
@@ -93,122 +101,13 @@ function WeekStrip({ selectedDate, onSelect }: { selectedDate: Date; onSelect: (
   )
 }
 
-// ── Hueco libre entre citas/bloqueos (informativo, con atajo para bloquear) ──
-function FreeSlot({
-  startTime,
-  durationMin,
-  onBlock,
-}: {
-  startTime: string
-  durationMin: number
-  onBlock: (startTime: string, durationMin: number) => void
-}) {
+// ── Hueco libre entre citas/bloqueos (informativo) ────────────────────────────
+function FreeSlot({ startTime, durationMin }: { startTime: string; durationMin: number }) {
   return (
     <div className="flex gap-3 items-center">
       <span className="text-[10.5px] text-[rgb(var(--fg-secondary))] w-10 shrink-0 pt-2">{startTime}</span>
-      <div className="flex-1 border border-dashed border-[rgb(var(--fg-secondary))]/30 rounded-xl px-3 py-2.5 flex items-center justify-between mb-3">
+      <div className="flex-1 border border-dashed border-[rgb(var(--fg-secondary))]/30 rounded-xl px-3 py-2.5 mb-3">
         <span className="text-xs text-[rgb(var(--fg-secondary))]">Hueco · {durationMin} min</span>
-        <button
-          onClick={() => onBlock(startTime, durationMin)}
-          className="flex items-center gap-1 text-[10.5px] border border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg-secondary))] px-2 py-1 rounded-full hover:border-brand-red hover:text-brand-red transition-all"
-        >
-          <BanIcon size={9} /> Bloquear
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function addMinutes(time: string, minutes: number) {
-  const [h, m] = time.split(':').map(Number)
-  const total = h * 60 + m + minutes
-  const clamped = Math.max(0, Math.min(23 * 60 + 59, total))
-  return `${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`
-}
-
-// ── Modal de bloqueo: rango de hora libre, sin depender de huecos entre citas ──
-function BlockModal({
-  initialStart,
-  initialEnd,
-  onConfirm,
-  onClose,
-}: {
-  initialStart: string
-  initialEnd: string
-  onConfirm: (startTime: string, endTime: string, reason: string) => Promise<void>
-  onClose: () => void
-}) {
-  const [startTime, setStartTime] = useState(initialStart)
-  const [endTime, setEndTime] = useState(initialEnd)
-  const [reason, setReason] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const invalid = endTime <= startTime
-
-  const handleConfirm = async () => {
-    if (invalid) return
-    setLoading(true)
-    await onConfirm(startTime, endTime, reason)
-    setLoading(false)
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
-      <div className="card p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <BanIcon size={14} className="text-[rgb(var(--fg-secondary))]" />
-            <b className="text-sm text-[rgb(var(--fg))]">Bloquear horario</b>
-          </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-[rgb(var(--bg-secondary))] text-[rgb(var(--fg-secondary))]">
-            <X size={14} />
-          </button>
-        </div>
-
-        <div className="flex gap-3 mb-4">
-          <div className="flex-1">
-            <p className="label mb-1">Desde</p>
-            <input
-              type="time"
-              className="input w-full"
-              value={startTime}
-              onChange={e => setStartTime(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <div className="flex-1">
-            <p className="label mb-1">Hasta</p>
-            <input
-              type="time"
-              className="input w-full"
-              value={endTime}
-              onChange={e => setEndTime(e.target.value)}
-            />
-          </div>
-        </div>
-        {invalid && (
-          <p className="text-[10.5px] text-brand-red -mt-2.5 mb-3">La hora de fin debe ser posterior a la de inicio.</p>
-        )}
-
-        <p className="label mb-2">Motivo (opcional)</p>
-        <input
-          className="input w-full mb-5"
-          placeholder="Ej: Trámite, descanso, corte propio..."
-          value={reason}
-          onChange={e => setReason(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleConfirm()}
-        />
-
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary text-sm py-1.5 px-4">Cancelar</button>
-          <button
-            onClick={handleConfirm}
-            disabled={loading || invalid}
-            className="btn-primary text-sm py-1.5 px-4 bg-brand-red hover:bg-[#bd2f39] flex items-center gap-1.5 disabled:opacity-50"
-          >
-            {loading ? <Loader2 size={13} className="animate-spin" /> : <><BanIcon size={13} /> Bloquear</>}
-          </button>
-        </div>
       </div>
     </div>
   )
@@ -378,7 +277,7 @@ function buildTimeline(appts: any[], blocks: BlockedSlot[]): TimelineItem[] {
 }
 
 // ── Vista principal ──────────────────────────────────────────────────────────
-export function AgendaView({ worker, todayAppointments, todayBlockedSlots, weekStats }: Props) {
+export function AgendaView({ worker, todayAppointments, todayBlockedSlots, availability, weekStats }: Props) {
   const supabase = createClient()
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [appointments, setAppointments] = useState(todayAppointments)
@@ -387,7 +286,7 @@ export function AgendaView({ worker, todayAppointments, todayBlockedSlots, weekS
   const [dayRevenue, setDayRevenue] = useState(
     todayAppointments.filter(a => a.status === 'completed').reduce((s, a) => s + (a.services?.price ?? 0), 0)
   )
-  const [pendingBlock, setPendingBlock] = useState<{ start: string; end: string } | null>(null)
+  const [showBlockModal, setShowBlockModal] = useState(false)
 
   const selectDate = async (date: Date) => {
     setSelectedDate(date)
@@ -435,51 +334,8 @@ export function AgendaView({ worker, todayAppointments, todayBlockedSlots, weekS
     })
   }
 
-  const openBlockModal = (start?: string, end?: string) => {
-    const now = new Date()
-    const isToday = format(selectedDate, 'yyyy-MM-dd') === format(now, 'yyyy-MM-dd')
-    const defaultStart = start ?? (isToday ? format(now, 'HH:mm') : '09:00')
-    setPendingBlock({ start: defaultStart, end: end ?? addMinutes(defaultStart, 60) })
-  }
-
-  const handleGapBlock = (startTime: string, durationMin: number) => {
-    openBlockModal(startTime, addMinutes(startTime, durationMin))
-  }
-
-  const confirmBlock = async (startTime: string, endTime: string, reason: string) => {
-    const [sh, sm] = startTime.split(':').map(Number)
-    const [eh, em] = endTime.split(':').map(Number)
-    const starts = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), sh, sm, 0)
-    const ends = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), eh, em, 0)
-
-    const overlapsAppt = appointments.some(a =>
-      a.status !== 'cancelled' && new Date(a.starts_at) < ends && new Date(a.ends_at) > starts
-    )
-    if (overlapsAppt) {
-      toast.error('Ya tienes una cita en ese horario')
-      return
-    }
-
-    const { data, error } = await supabase
-      .from('blocked_slots')
-      .insert({
-        worker_id: worker.id,
-        starts_at: starts.toISOString(),
-        ends_at: ends.toISOString(),
-        reason: reason.trim() || null,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('confirmBlock error:', error)
-      toast.error(error.code === '23P01' ? 'Ese horario se solapa con otro bloqueo' : 'Error al bloquear el horario')
-      return
-    }
-
-    setBlockedSlots(prev => [...prev, data])
-    setPendingBlock(null)
-    toast.success('Horario bloqueado')
+  const addBlocked = (block: BlockedSlot) => {
+    setBlockedSlots(prev => [...prev, block])
   }
 
   const handleUnblock = (id: string) => {
@@ -503,12 +359,13 @@ export function AgendaView({ worker, todayAppointments, todayBlockedSlots, weekS
 
   return (
     <>
-    {pendingBlock && (
-      <BlockModal
-        initialStart={pendingBlock.start}
-        initialEnd={pendingBlock.end}
-        onConfirm={confirmBlock}
-        onClose={() => setPendingBlock(null)}
+    {showBlockModal && (
+      <BlockTimeModal
+        workerId={worker.id}
+        availability={availability}
+        initialDate={format(selectedDate, 'yyyy-MM-dd')}
+        onCreated={addBlocked}
+        onClose={() => setShowBlockModal(false)}
       />
     )}
     <main className="max-w-lg md:max-w-2xl mx-auto px-4 py-4">
@@ -524,7 +381,7 @@ export function AgendaView({ worker, todayAppointments, todayBlockedSlots, weekS
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => openBlockModal()}
+            onClick={() => setShowBlockModal(true)}
             className="flex items-center gap-1 text-xs border border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg-secondary))] px-2.5 py-1.5 rounded-full hover:border-brand-red hover:text-brand-red transition-all"
           >
             <BanIcon size={10} /> Bloquear horario
@@ -604,7 +461,6 @@ export function AgendaView({ worker, todayAppointments, todayBlockedSlots, weekS
                   key={`gap-${idx}`}
                   startTime={item.startTime}
                   durationMin={item.durationMin}
-                  onBlock={handleGapBlock}
                 />
               )
             }

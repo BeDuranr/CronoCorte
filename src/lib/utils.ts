@@ -162,6 +162,100 @@ export function calculateAvailableSlots({
   return slots
 }
 
+// ── Franjas libres de un día (para elegir un rango a bloquear) ─────────────
+// A diferencia de calculateAvailableSlots (duración fija, granularidad de 1h,
+// pensado para reservas de clientes), esto calcula los TRAMOS continuos libres
+// del día completo —acotados por el horario de la barbería y recortando lo ya
+// ocupado (citas + bloqueos existentes)— para que el usuario pueda elegir
+// cualquier inicio/fin dentro de ellos, a una granularidad más fina.
+export interface FreeStretch { start: string; end: string } // 'HH:mm'
+
+function hhmmToMinutes(hhmm: string) {
+  const [h, m] = hhmm.slice(0, 5).split(':').map(Number)
+  return h * 60 + m
+}
+
+function minutesToHHMM(mins: number) {
+  return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
+}
+
+// Genera los horarios "de grilla" entre from y to (ambos incluidos), cada step minutos.
+export function enumerateGrid(from: string, to: string, stepMinutes: number): string[] {
+  const out: string[] = []
+  for (let m = hhmmToMinutes(from); m <= hhmmToMinutes(to); m += stepMinutes) {
+    out.push(minutesToHHMM(m))
+  }
+  return out
+}
+
+export function calculateFreeStretches({
+  availability,
+  occupied,
+  date,
+  granularityMinutes = 30,
+  minAdvanceMinutes = 0,
+}: {
+  availability: { start_time: string; end_time: string } | null
+  occupied: { starts_at: string; ends_at: string }[]
+  date: string // 'yyyy-MM-dd'
+  granularityMinutes?: number
+  minAdvanceMinutes?: number
+}): FreeStretch[] {
+  if (!availability) return []
+
+  const todayChile = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
+  if (date < todayChile) return []
+
+  const openMin = hhmmToMinutes(availability.start_time)
+  const closeMin = hhmmToMinutes(availability.end_time)
+  if (closeMin <= openMin) return []
+
+  // Ocupados -> minutos "de pared" Chile, recortados a la ventana [open, close].
+  // Mismo truco de toLocaleString('sv-SE', ...) que calculateAvailableSlots para
+  // obtener la hora local de Chile sin importar la zona del runtime.
+  const busy = occupied
+    .map(o => {
+      const s = hhmmToMinutes(new Date(o.starts_at).toLocaleString('sv-SE', { timeZone: 'America/Santiago' }).slice(11, 16))
+      const e = hhmmToMinutes(new Date(o.ends_at).toLocaleString('sv-SE', { timeZone: 'America/Santiago' }).slice(11, 16))
+      return [Math.max(openMin, s), Math.min(closeMin, e)] as [number, number]
+    })
+    .filter(([s, e]) => e > s)
+    .sort((a, b) => a[0] - b[0])
+
+  const merged: [number, number][] = []
+  for (const [s, e] of busy) {
+    const last = merged[merged.length - 1]
+    if (last && s <= last[1]) last[1] = Math.max(last[1], e)
+    else merged.push([s, e])
+  }
+
+  // Anticipación mínima si la fecha pedida es hoy (misma lógica de hora de pared
+  // Chile que calculateAvailableSlots).
+  let earliestMin = openMin
+  if (date === todayChile) {
+    const nowChile = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' }))
+    earliestMin = nowChile.getHours() * 60 + nowChile.getMinutes() + minAdvanceMinutes
+  }
+
+  const raw: [number, number][] = []
+  let cursor = Math.max(openMin, earliestMin)
+  for (const [s, e] of merged) {
+    if (s > cursor) raw.push([cursor, s])
+    cursor = Math.max(cursor, e)
+  }
+  if (cursor < closeMin) raw.push([cursor, closeMin])
+
+  // Redondear cada tramo a la grilla (inicio hacia arriba, fin hacia abajo) y
+  // descartar los que quedan más angostos que un paso de grilla.
+  return raw
+    .map(([s, e]) => ({
+      start: Math.ceil(s / granularityMinutes) * granularityMinutes,
+      end: Math.floor(e / granularityMinutes) * granularityMinutes,
+    }))
+    .filter(({ start, end }) => end - start >= granularityMinutes)
+    .map(({ start, end }) => ({ start: minutesToHHMM(start), end: minutesToHHMM(end) }))
+}
+
 // Días de la semana
 export const DAYS: { key: string; label: string; index: number }[] = [
   { key: 'sun', label: 'Domingo', index: 0 },

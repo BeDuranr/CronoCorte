@@ -97,6 +97,15 @@ export default async function AgendaPage() {
 
   const barbershop = worker.barbershops as any
 
+  // Disponibilidad semanal a nivel de barbería (worker_id NULL), igual que la
+  // página pública — alimenta el selector de fechas/horas del modal de bloqueo.
+  const { data: availability } = await supabase
+    .from('availability')
+    .select('day_of_week, start_time, end_time')
+    .eq('barbershop_id', worker.barbershop_id)
+    .eq('is_active', true)
+    .order('day_of_week')
+
   return (
     <>
       <Navbar role="worker" barbershopName={barbershop?.name} />
@@ -104,6 +113,7 @@ export default async function AgendaPage() {
         worker={{ ...worker, barbershop } as any}
         todayAppointments={(todayAppts as any[]) ?? []}
         todayBlockedSlots={(todayBlocked as any[]) ?? []}
+        availability={(availability as any[]) ?? []}
         weekStats={{
           total: weekAppts?.length ?? 0,
           completed: weekAppts?.filter(a => a.status === 'completed').length ?? 0,
