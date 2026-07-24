@@ -527,26 +527,29 @@ export function CitasView({ barbershopId, appointments: initial, workers, servic
   const [unblockingId, setUnblockingId] = useState<string | null>(null)
 
   // ── Swipe-to-delete (solo citas canceladas) ──────────────────────────────
+  // Pointer Events unifican mouse y touch: el mismo gesto de "arrastrar" sirve
+  // tanto para dedo en el celular como para mouse en desktop.
   const SWIPE_THRESHOLD = 70
-  const touchStartRef = useRef<{ id: string; x: number } | null>(null)
+  const pointerStartRef = useRef<{ id: string; x: number } | null>(null)
   const [swipeDelta, setSwipeDelta] = useState<{ id: string; x: number } | null>(null)
 
-  const handleTouchStart = (appt: any) => (e: React.TouchEvent) => {
+  const handlePointerDown = (appt: any) => (e: React.PointerEvent) => {
     if (appt.status !== 'cancelled') return
-    touchStartRef.current = { id: appt.id, x: e.touches[0].clientX }
+    e.currentTarget.setPointerCapture(e.pointerId)
+    pointerStartRef.current = { id: appt.id, x: e.clientX }
     setSwipeDelta({ id: appt.id, x: 0 })
   }
 
-  const handleTouchMove = (appt: any) => (e: React.TouchEvent) => {
-    if (!touchStartRef.current || touchStartRef.current.id !== appt.id) return
-    const dx = e.touches[0].clientX - touchStartRef.current.x
+  const handlePointerMove = (appt: any) => (e: React.PointerEvent) => {
+    if (!pointerStartRef.current || pointerStartRef.current.id !== appt.id) return
+    const dx = e.clientX - pointerStartRef.current.x
     setSwipeDelta({ id: appt.id, x: dx })
   }
 
-  const handleTouchEnd = (appt: any) => () => {
-    if (!touchStartRef.current || touchStartRef.current.id !== appt.id) return
+  const handlePointerEnd = (appt: any) => () => {
+    if (!pointerStartRef.current || pointerStartRef.current.id !== appt.id) return
     const dx = swipeDelta && swipeDelta.id === appt.id ? swipeDelta.x : 0
-    touchStartRef.current = null
+    pointerStartRef.current = null
     setSwipeDelta(null)
     if (Math.abs(dx) > SWIPE_THRESHOLD) setDeleteAppt(appt)
   }
@@ -891,12 +894,14 @@ export function CitasView({ barbershopId, appointments: initial, workers, servic
                           </div>
                         )}
                         <div
-                          onTouchStart={handleTouchStart(appt)}
-                          onTouchMove={handleTouchMove(appt)}
-                          onTouchEnd={handleTouchEnd(appt)}
+                          onPointerDown={handlePointerDown(appt)}
+                          onPointerMove={handlePointerMove(appt)}
+                          onPointerUp={handlePointerEnd(appt)}
+                          onPointerCancel={handlePointerEnd(appt)}
                           style={{
                             transform: swipeX ? `translateX(${swipeX}px)` : undefined,
                             transition: isSwiping ? 'none' : 'transform 200ms ease-out',
+                            touchAction: appt.status === 'cancelled' ? 'pan-y' : undefined,
                           }}
                           className="relative bg-[rgb(var(--bg))] flex items-start gap-2 px-4 py-3 border-b border-[rgb(var(--fg-secondary))]/10 last:border-0 text-sm flex-wrap"
                         >
@@ -956,16 +961,6 @@ export function CitasView({ barbershopId, appointments: initial, workers, servic
                               Cancelar
                             </button>
                           </div>
-                        )}
-                        {/* Eliminar (citas canceladas) — respaldo para navegadores sin touch */}
-                        {appt.status === 'cancelled' && (
-                          <button
-                            onClick={() => setDeleteAppt(appt)}
-                            className="shrink-0 p-1.5 rounded-lg text-[rgb(var(--fg-secondary))] hover:text-brand-red hover:bg-brand-red/10 transition-all"
-                            title="Eliminar cita"
-                          >
-                            <Trash2 size={13} />
-                          </button>
                         )}
                         </div>
                       </div>
