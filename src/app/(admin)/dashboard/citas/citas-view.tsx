@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { format, parseISO, isToday, isTomorrow, isYesterday } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { formatPrice, calculateAvailableSlots } from '@/lib/utils'
@@ -121,6 +121,51 @@ function CancelModal({
             className="btn-primary text-sm py-1.5 px-4 bg-brand-red hover:bg-[#bd2f39]"
           >
             {loading ? <Loader2 size={13} className="animate-spin" /> : 'Cancelar cita'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal confirmar eliminación permanente ────────────────────────────────────
+function DeleteModal({
+  appt,
+  onDelete,
+  onClose,
+}: {
+  appt: any
+  onDelete: (id: string) => Promise<void>
+  onClose: () => void
+}) {
+  const [loading, setLoading] = useState(false)
+
+  const handleDelete = async () => {
+    setLoading(true)
+    await onDelete(appt.id)
+    setLoading(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="card p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <b className="text-sm text-[rgb(var(--fg))]">Eliminar cita de {appt.client_name}</b>
+          <button onClick={onClose} className="p-1 rounded hover:bg-[rgb(var(--bg-secondary))] text-[rgb(var(--fg-secondary))]">
+            <X size={14} />
+          </button>
+        </div>
+        <p className="text-xs text-[rgb(var(--fg-secondary))] mb-5">
+          ¿Estás seguro que quieres eliminar esta cita? Esta acción no se puede deshacer.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="btn-secondary text-sm py-1.5 px-4">Volver</button>
+          <button
+            onClick={handleDelete}
+            disabled={loading}
+            className="btn-primary text-sm py-1.5 px-4 bg-brand-red hover:bg-[#bd2f39]"
+          >
+            {loading ? <Loader2 size={13} className="animate-spin" /> : 'Eliminar'}
           </button>
         </div>
       </div>
@@ -476,9 +521,55 @@ export function CitasView({ barbershopId, appointments: initial, workers, servic
   const [workerFilter, setWorkerFilter] = useState<string>('all')
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [cancelAppt, setCancelAppt] = useState<any | null>(null)
+  const [deleteAppt, setDeleteAppt] = useState<any | null>(null)
   const [showManual, setShowManual] = useState(false)
   const [showBlock, setShowBlock] = useState(false)
   const [unblockingId, setUnblockingId] = useState<string | null>(null)
+
+  // ── Swipe-to-delete (solo citas canceladas) ──────────────────────────────
+  // Pointer Events unifican mouse y touch: el mismo gesto de "arrastrar" sirve
+  // tanto para dedo en el celular como para mouse en desktop.
+  const SWIPE_THRESHOLD = 70
+  const pointerStartRef = useRef<{ id: string; x: number } | null>(null)
+  const [swipeDelta, setSwipeDelta] = useState<{ id: string; x: number } | null>(null)
+
+  const handlePointerDown = (appt: any) => (e: React.PointerEvent) => {
+    if (appt.status !== 'cancelled') return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    pointerStartRef.current = { id: appt.id, x: e.clientX }
+    setSwipeDelta({ id: appt.id, x: 0 })
+  }
+
+  const handlePointerMove = (appt: any) => (e: React.PointerEvent) => {
+    if (!pointerStartRef.current || pointerStartRef.current.id !== appt.id) return
+    const dx = e.clientX - pointerStartRef.current.x
+    setSwipeDelta({ id: appt.id, x: dx })
+  }
+
+  const handlePointerEnd = (appt: any) => () => {
+    if (!pointerStartRef.current || pointerStartRef.current.id !== appt.id) return
+    const dx = swipeDelta && swipeDelta.id === appt.id ? swipeDelta.x : 0
+    pointerStartRef.current = null
+    setSwipeDelta(null)
+    if (Math.abs(dx) > SWIPE_THRESHOLD) setDeleteAppt(appt)
+  }
+
+  const deleteAppointment = async (id: string) => {
+    const res = await fetch('/api/appointments/admin-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      toast.error(data.message || 'Error al eliminar')
+    } else {
+      const groupId = deleteAppt?.booking_group_id
+      setAppointments(prev => prev.filter(a => groupId ? a.booking_group_id !== groupId : a.id !== id))
+      toast.success('Cita eliminada')
+    }
+    setDeleteAppt(null)
+  }
 
   // Abrir el modal automáticamente si se llega con ?nuevo=1 (botón del dashboard)
   useEffect(() => {
@@ -621,6 +712,14 @@ export function CitasView({ barbershopId, appointments: initial, workers, servic
           appt={cancelAppt}
           onCancel={cancelWithReason}
           onClose={() => setCancelAppt(null)}
+        />
+      )}
+
+      {deleteAppt && (
+        <DeleteModal
+          appt={deleteAppt}
+          onDelete={deleteAppointment}
+          onClose={() => setDeleteAppt(null)}
         />
       )}
 
@@ -784,8 +883,28 @@ export function CitasView({ barbershopId, appointments: initial, workers, servic
                       (appt.status === 'confirmed' || appt.status === 'pending_payment') &&
                       new Date(appt.ends_at) > new Date()
 
+                    const isSwiping = swipeDelta?.id === appt.id
+                    const swipeX = swipeDelta && isSwiping ? swipeDelta.x : 0
+
                     return (
-                      <div key={appt.id} className="flex items-start gap-2 px-4 py-3 border-b border-[rgb(var(--fg-secondary))]/10 last:border-0 text-sm flex-wrap">
+                      <div key={appt.id} className="relative overflow-hidden">
+                        {appt.status === 'cancelled' && (
+                          <div className="absolute inset-0 flex items-center justify-end px-5 bg-brand-red text-white">
+                            <Trash2 size={16} />
+                          </div>
+                        )}
+                        <div
+                          onPointerDown={handlePointerDown(appt)}
+                          onPointerMove={handlePointerMove(appt)}
+                          onPointerUp={handlePointerEnd(appt)}
+                          onPointerCancel={handlePointerEnd(appt)}
+                          style={{
+                            transform: swipeX ? `translateX(${swipeX}px)` : undefined,
+                            transition: isSwiping ? 'none' : 'transform 200ms ease-out',
+                            touchAction: appt.status === 'cancelled' ? 'pan-y' : undefined,
+                          }}
+                          className="relative bg-[rgb(var(--bg))] flex items-start gap-2 px-4 py-3 border-b border-[rgb(var(--fg-secondary))]/10 last:border-0 text-sm flex-wrap"
+                        >
                         {/* Hora */}
                         <b className="w-10 font-bold text-[rgb(var(--fg))] shrink-0">
                           {format(parseISO(appt.starts_at), 'HH:mm')}
@@ -843,6 +962,7 @@ export function CitasView({ barbershopId, appointments: initial, workers, servic
                             </button>
                           </div>
                         )}
+                        </div>
                       </div>
                     )
                   })}

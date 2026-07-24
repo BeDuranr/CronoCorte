@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID!
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN!
-const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM! // 'whatsapp:+56981613286'
+const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM! // 'whatsapp:+56920583261'
 
 // SID de la plantilla de confirmación aprobada por Meta (en variable de entorno)
 const TEMPLATE_CONFIRMACION = process.env.TWILIO_TEMPLATE_CONFIRMACION ?? ''
