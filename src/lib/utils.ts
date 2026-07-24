@@ -67,6 +67,7 @@ export function calculateAvailableSlots({
   serviceDuration,
   date,
   minAdvanceMinutes = 60,
+  slotIntervalMinutes = 60,
 }: {
   availability: { start_time: string; end_time: string }
   existingAppointments: { starts_at: string; ends_at: string }[]
@@ -76,6 +77,9 @@ export function calculateAvailableSlots({
   // cita manual del admin pasa 0 para permitir cargar la hora actual / walk-ins.
   // El bloqueo de días pasados se mantiene siempre, independiente de este valor.
   minAdvanceMinutes?: number
+  // Cada cuántos minutos se ofrece un horario (configurable por barbería,
+  // ver barbershops.slot_interval_minutes). Antes estaba fijo en 60.
+  slotIntervalMinutes?: number
 }): string[] {
   const slots: string[] = []
 
@@ -156,15 +160,16 @@ export function calculateAvailableSlots({
       slots.push(format(current, 'HH:mm'))
     }
 
-    current = addMinutes(current, 60) // granularidad de 1 hora
+    current = addMinutes(current, slotIntervalMinutes)
   }
 
   return slots
 }
 
 // ── Franjas libres de un día (para elegir un rango a bloquear) ─────────────
-// A diferencia de calculateAvailableSlots (duración fija, granularidad de 1h,
-// pensado para reservas de clientes), esto calcula los TRAMOS continuos libres
+// A diferencia de calculateAvailableSlots (duración fija, granularidad
+// configurable por barbería, pensado para reservas de clientes), esto calcula
+// los TRAMOS continuos libres
 // del día completo —acotados por el horario de la barbería y recortando lo ya
 // ocupado (citas + bloqueos existentes)— para que el usuario pueda elegir
 // cualquier inicio/fin dentro de ellos, a una granularidad más fina.

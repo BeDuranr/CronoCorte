@@ -273,6 +273,7 @@ function StepDateTime({
   availability,
   workerId,
   serviceDuration,
+  slotIntervalMinutes,
   peopleCount,
 }: {
   selectedDate: Date
@@ -282,6 +283,7 @@ function StepDateTime({
   availability: Props['availability']
   workerId: string
   serviceDuration: number
+  slotIntervalMinutes: number
   peopleCount: number
 }) {
   const [slots, setSlots] = useState<string[]>([])
@@ -326,6 +328,7 @@ function StepDateTime({
         existingAppointments: existing.map(a => ({ starts_at: a.starts_at, ends_at: a.ends_at })),
         serviceDuration,
         date: dateStr,
+        slotIntervalMinutes,
       })
       slotsCache.current.set(cacheKey, available)
       setSlots(available)
@@ -1165,6 +1168,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
                 availability={availability}
                 workerId={selectedWorker.id}
                 serviceDuration={maxDuration}
+                slotIntervalMinutes={(barbershop as any).slot_interval_minutes ?? 60}
                 peopleCount={peopleCount}
               />
             )}

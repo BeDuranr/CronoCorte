@@ -35,7 +35,7 @@ export default async function PublicBookingPage({ params }: Props) {
 
   const { data: barbershop } = await supabase
     .from('barbershops')
-    .select('id, name, slug, description, address, phone, instagram, logo_url, transfer_info, agent_name, agent_enabled, accent_color')
+    .select('id, name, slug, description, address, phone, instagram, logo_url, transfer_info, agent_name, agent_enabled, accent_color, slot_interval_minutes')
     .eq('slug', params.slug)
     .eq('is_active', true)
     .single()
