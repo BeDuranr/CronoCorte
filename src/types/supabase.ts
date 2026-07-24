@@ -103,6 +103,13 @@ export type Database = {
             foreignKeyName: "appointments_worker_id_fkey"
             columns: ["worker_id"]
             isOneToOne: false
+            referencedRelation: "public_workers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
             referencedRelation: "workers"
             referencedColumns: ["id"]
           },
@@ -151,6 +158,13 @@ export type Database = {
             foreignKeyName: "availability_worker_id_fkey"
             columns: ["worker_id"]
             isOneToOne: false
+            referencedRelation: "public_workers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
             referencedRelation: "workers"
             referencedColumns: ["id"]
           },
@@ -178,6 +192,7 @@ export type Database = {
           phone: string | null
           reminder_timings: string[] | null
           schedule_config: Json | null
+          slot_interval_minutes: number
           slug: string
           transfer_info: string | null
           whatsapp_template_confirmed: string | null
@@ -204,6 +219,7 @@ export type Database = {
           phone?: string | null
           reminder_timings?: string[] | null
           schedule_config?: Json | null
+          slot_interval_minutes?: number
           slug: string
           transfer_info?: string | null
           whatsapp_template_confirmed?: string | null
@@ -230,6 +246,7 @@ export type Database = {
           phone?: string | null
           reminder_timings?: string[] | null
           schedule_config?: Json | null
+          slot_interval_minutes?: number
           slug?: string
           transfer_info?: string | null
           whatsapp_template_confirmed?: string | null
@@ -260,6 +277,13 @@ export type Database = {
           worker_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "blocked_slots_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "public_workers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "blocked_slots_worker_id_fkey"
             columns: ["worker_id"]
@@ -306,6 +330,13 @@ export type Database = {
             columns: ["barbershop_id"]
             isOneToOne: false
             referencedRelation: "barbershops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portfolio_photos_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "public_workers"
             referencedColumns: ["id"]
           },
           {
@@ -434,7 +465,41 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      public_workers: {
+        Row: {
+          avatar_url: string | null
+          barbershop_id: string | null
+          id: string | null
+          is_active: boolean | null
+          name: string | null
+          specialty: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          barbershop_id?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+          specialty?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          barbershop_id?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+          specialty?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workers_barbershop_id_fkey"
+            columns: ["barbershop_id"]
+            isOneToOne: false
+            referencedRelation: "barbershops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       [_ in never]: never

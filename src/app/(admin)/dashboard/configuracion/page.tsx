@@ -29,7 +29,10 @@ interface ShopConfig {
   reminder_timings: ReminderTiming[]
   whatsapp_template_confirmed: string | null
   whatsapp_template_reminder: string | null
+  slot_interval_minutes: number
 }
+
+const SLOT_INTERVAL_OPTIONS = [15, 30, 60] as const
 
 interface AvailabilityRow {
   id?: string
@@ -96,7 +99,7 @@ export default function ConfiguracionPage() {
     // Fetch optional new columns separately so missing columns don't break the whole query
     const { data: extData } = await supabase
       .from('barbershops')
-      .select('cancel_policy, reminder_timings, whatsapp_template_confirmed, whatsapp_template_reminder')
+      .select('cancel_policy, reminder_timings, whatsapp_template_confirmed, whatsapp_template_reminder, slot_interval_minutes')
       .eq('id', shopData.id)
       .single()
 
@@ -107,6 +110,7 @@ export default function ConfiguracionPage() {
       reminder_timings: (extData as any)?.reminder_timings ?? ['24h'],
       whatsapp_template_confirmed: (extData as any)?.whatsapp_template_confirmed ?? null,
       whatsapp_template_reminder: (extData as any)?.whatsapp_template_reminder ?? null,
+      slot_interval_minutes: (extData as any)?.slot_interval_minutes ?? 60,
     } as ShopConfig)
 
     // Load availability
@@ -237,6 +241,11 @@ export default function ConfiguracionPage() {
     if (!shop) return
     setSavingSchedule(true)
     try {
+      await supabase
+        .from('barbershops')
+        .update({ slot_interval_minutes: shop.slot_interval_minutes })
+        .eq('id', shop.id)
+
       const enabled = schedule.filter(s => s.enabled)
       const disabled = schedule.filter(s => !s.enabled && s.id)
 
@@ -523,6 +532,29 @@ export default function ConfiguracionPage() {
         {tab === 'horario' && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-[rgb(var(--fg-secondary))]">Define los días y horas de atención.</p>
+
+            <div className="card p-3">
+              <p className="label mb-2">Cada cuánto se ofrece un horario</p>
+              <div className="flex gap-2">
+                {SLOT_INTERVAL_OPTIONS.map(minutes => (
+                  <button
+                    key={minutes}
+                    onClick={() => setShop(s => s ? { ...s, slot_interval_minutes: minutes } : s)}
+                    className={`flex-1 text-xs px-3 py-1.5 rounded-lg border transition-all ${
+                      shop.slot_interval_minutes === minutes
+                        ? 'border-brand-red text-brand-red bg-brand-red/5 font-semibold'
+                        : 'border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg-secondary))]'
+                    }`}
+                  >
+                    {minutes} min
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-[rgb(var(--fg-secondary))] mt-2">
+                Ej: con 30 min, un cliente puede reservar a las 10:00, 10:30, 11:00... En vez de solo en punto.
+              </p>
+            </div>
+
             {DAYS.map(day => {
               const row = schedule.find(s => s.day_of_week === day.index)!
               return (

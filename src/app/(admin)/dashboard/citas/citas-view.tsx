@@ -37,6 +37,7 @@ interface BlockedSlot {
 
 interface Props {
   barbershopId: string
+  slotIntervalMinutes: number
   appointments: any[]
   workers: { id: string; name: string }[]
   services: Service[]
@@ -194,6 +195,7 @@ function buildTimestamps(dateStr: string, time: string, durationMin: number) {
 // ── Modal de cita manual ──────────────────────────────────────────────────────
 function ManualAppointmentModal({
   barbershopId,
+  slotIntervalMinutes,
   workers,
   services,
   availability,
@@ -201,6 +203,7 @@ function ManualAppointmentModal({
   onCreated,
 }: {
   barbershopId: string
+  slotIntervalMinutes: number
   workers: { id: string; name: string }[]
   services: Service[]
   availability: AvailabilityRow[]
@@ -281,6 +284,7 @@ function ManualAppointmentModal({
           serviceDuration: duration,
           date,
           minAdvanceMinutes: 0, // admin: sin límite de anticipación
+          slotIntervalMinutes,
         })
         if (!cancelled) setSlots(available)
       } finally {
@@ -511,7 +515,7 @@ function ManualAppointmentModal({
 }
 
 // ── Vista de citas ────────────────────────────────────────────────────────────
-export function CitasView({ barbershopId, appointments: initial, workers, services, availability, blockedSlots: initialBlocked }: Props) {
+export function CitasView({ barbershopId, slotIntervalMinutes, appointments: initial, workers, services, availability, blockedSlots: initialBlocked }: Props) {
   const supabase = createClient()
   const router = useRouter()
   const [appointments, setAppointments] = useState<any[]>(initial)
@@ -726,6 +730,7 @@ export function CitasView({ barbershopId, appointments: initial, workers, servic
       {showManual && (
         <ManualAppointmentModal
           barbershopId={barbershopId}
+          slotIntervalMinutes={slotIntervalMinutes}
           workers={workers}
           services={services}
           availability={availability}

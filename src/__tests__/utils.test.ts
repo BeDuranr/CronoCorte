@@ -215,4 +215,15 @@ describe('calculateAvailableSlots', () => {
     // 11:00 + 60min = 12:00 > 11:00 — no debe aparecer
     expect(slots).not.toContain('11:00')
   })
+
+  it('respeta slotIntervalMinutes configurable (ej: cada 30 minutos)', () => {
+    const slots = calculateAvailableSlots({
+      ...baseParams,
+      slotIntervalMinutes: 30,
+    })
+    expect(slots).toContain('09:00')
+    expect(slots).toContain('09:30')
+    expect(slots).toContain('10:00')
+    expect(slots).toContain('10:30')
+  })
 })

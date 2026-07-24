@@ -22,7 +22,7 @@ export default async function CitasPage() {
 
   const { data: barbershop } = await supabase
     .from('barbershops')
-    .select('id, name, slug')
+    .select('id, name, slug, slot_interval_minutes')
     .eq('admin_id', user.id)
     .single()
 
@@ -87,6 +87,7 @@ export default async function CitasPage() {
       <Navbar role="admin" barbershopName={barbershop.name} />
       <CitasView
         barbershopId={barbershop.id}
+        slotIntervalMinutes={(barbershop as any).slot_interval_minutes ?? 60}
         appointments={(appointments as any[]) ?? []}
         workers={(workers as any[]) ?? []}
         services={(services as any[]) ?? []}
