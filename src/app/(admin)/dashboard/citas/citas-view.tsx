@@ -957,6 +957,16 @@ export function CitasView({ barbershopId, appointments: initial, workers, servic
                             </button>
                           </div>
                         )}
+                        {/* Eliminar (citas canceladas) — respaldo para navegadores sin touch */}
+                        {appt.status === 'cancelled' && (
+                          <button
+                            onClick={() => setDeleteAppt(appt)}
+                            className="shrink-0 p-1.5 rounded-lg text-[rgb(var(--fg-secondary))] hover:text-brand-red hover:bg-brand-red/10 transition-all"
+                            title="Eliminar cita"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                         </div>
                       </div>
                     )
