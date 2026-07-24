@@ -132,7 +132,7 @@ CRON_SECRET
 - **Prices are in CLP (Chilean pesos)**; always use `formatPrice()` from `src/lib/utils.ts` to display them.
 - **Phone numbers** are stored with country code (`+56...`). The booking form auto-prepends `+56` if not already present.
 - **Pending payment timeout is 30 minutes** — the cron auto-cancels and the client UI shows a countdown. Reminders are only sent for `confirmed` appointments (not `pending_payment`).
-- **Slot granularity is 1 hour** (hardcoded in `calculateAvailableSlots`). Minimum booking advance is 60 minutes from now (Chile time).
+- **Slot granularity is configurable per barbershop** (`barbershops.slot_interval_minutes`, one of 15/30/60, default 60) via `calculateAvailableSlots`'s `slotIntervalMinutes` param, set in Configuración > Horarios. Minimum booking advance is 60 minutes from now (Chile time).
 - **Group bookings**: multiple people book with the same worker on the same day; each person gets their own `Appointment` row sharing a `booking_group_id` and `total_amount`. The cancel token is shared (first block only). When verifying a group payment, all rows in the group are confirmed at once.
 - **Extra services per person** (e.g., corte + barba) are stored in the `notes` field as `"Servicios adicionales: name1, name2"`. The primary service is `service_id`; extras are in `extra_service_ids`. The `total_amount` is always calculated server-side from the DB prices — never trusted from the client.
 - **Anti-spam limit**: max 3 `pending_payment` appointments per phone number at a time. Exceeding this returns HTTP 429.
