@@ -609,6 +609,12 @@ export function CitasView({ barbershopId, slotIntervalMinutes, appointments: ini
     setUnblockingId(null)
   }
 
+  // Bloqueos vigentes (oculta los que ya pasaron)
+  const upcomingBlocked = useMemo(
+    () => blockedSlots.filter(b => new Date(b.ends_at) > new Date()),
+    [blockedSlots]
+  )
+
   // Conteos por estado
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: 0, pending_payment: 0, confirmed: 0, completed: 0, cancelled: 0 }
@@ -784,13 +790,13 @@ export function CitasView({ barbershopId, slotIntervalMinutes, appointments: ini
         </div>
 
         {/* Horarios bloqueados */}
-        {blockedSlots.length > 0 && (
+        {upcomingBlocked.length > 0 && (
           <div className="card p-4 mb-4">
             <h3 className="text-sm font-semibold text-[rgb(var(--fg))] mb-3 flex items-center gap-2">
               <BanIcon size={13} /> Horarios bloqueados
             </h3>
             <div className="flex flex-col gap-2">
-              {blockedSlots.map(b => (
+              {upcomingBlocked.map(b => (
                 <div key={b.id} className="flex items-center justify-between gap-2 text-sm">
                   <div className="min-w-0">
                     <p className="text-[rgb(var(--fg))]">

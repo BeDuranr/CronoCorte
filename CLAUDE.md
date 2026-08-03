@@ -159,7 +159,8 @@ CRON_SECRET
 
 ### Agente IA
 
-- The agent is **per-barbershop** and activated via `agent_enabled` toggle. When enabled, it auto-replies to WhatsApp text messages via the Twilio webhook.
+- The agent widget is **per-barbershop** and activated via the `agent_enabled` toggle in Configuración. When enabled, it shows a hair/face recommendation chat widget on the public booking page (`/[slug]`).
+- **The agent is fully decoupled from WhatsApp** — `agent_enabled` has no effect on WhatsApp messages. The Twilio webhook (`/api/whatsapp/webhook`) never auto-replies to client text messages; it only uses Groq's vision model to validate payment receipt images (see "Payment verification flow" above).
 - **Hardcoded guardrails** are always appended to the system prompt after any custom instructions — they cannot be removed or overridden by admin-provided prompts. The guardrail explicitly forbids the agent from offering to schedule appointments.
-- The agent **only handles WhatsApp text/image messages** through the webhook. The chat widget on the booking page (`/[slug]`) is a separate client-side interface that calls `/api/agent/chat` directly.
+- The agent **only handles image/text via `/api/agent/chat`**, called directly from the widget in the browser — there's no server-side WhatsApp integration for it.
 - The **Twilio webhook signature** is verified in production using HMAC-SHA1; skipped in development.
