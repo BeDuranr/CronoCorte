@@ -45,7 +45,7 @@ export default async function CitasPage() {
     .eq('barbershop_id', barbershop.id)
     .gte('starts_at', from.toISOString())
     .lte('starts_at', to.toISOString())
-    .order('starts_at', { ascending: false })
+    .order('starts_at', { ascending: true })
 
   const { data: workers } = await supabase
     .from('workers')

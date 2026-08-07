@@ -648,7 +648,7 @@ export function CitasView({ barbershopId, slotIntervalMinutes, appointments: ini
       if (!map[day]) map[day] = []
       map[day].push(a)
     })
-    return Object.entries(map).sort(([a], [b]) => b.localeCompare(a)) // newest first
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)) // soonest first
   }, [filtered])
 
   const updateStatus = async (id: string, status: string) => {

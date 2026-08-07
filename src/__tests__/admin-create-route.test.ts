@@ -8,7 +8,7 @@ const mockService = vi.fn()
 const mockWorker = vi.fn()
 const mockConflict = vi.fn()
 const mockInsertResult = vi.fn()
-const insertSpy = vi.fn(() => ({ select: () => ({ single: mockInsertResult }) }))
+const insertSpy = vi.fn((_row: Record<string, unknown>) => ({ select: () => ({ single: mockInsertResult }) }))
 
 // Builder encadenable: select/eq/not/lt/gt/limit devuelven el mismo objeto;
 // single/maybeSingle resuelven con el terminal configurado por tabla.
