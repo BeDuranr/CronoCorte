@@ -107,6 +107,8 @@ function StoryCanvas({
           <img
             src={logoDataUrl}
             alt=""
+            width={68}
+            height={68}
             style={{ width: 68, height: 68, borderRadius: 9999, objectFit: 'cover', flexShrink: 0 }}
           />
         ) : (
@@ -301,11 +303,23 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
     if (!storyRef.current) return
     setDownloading(true)
     try {
-      const dataUrl = await toPng(storyRef.current, {
-        width: STORY_WIDTH,
-        height: renderedHeight,
-        pixelRatio: 1,
-      })
+      // Safari/WebKit puede rasterizar el <foreignObject> que arma
+      // html-to-image antes de que el logo (una imagen recién montada)
+      // termine de decodificarse, dejándolo en blanco en el PNG aunque se
+      // vea bien en pantalla. Forzamos a esperar el decode de cada imagen
+      // — y un par de frames extra para el pintado — antes de capturar.
+      const imgs = Array.from(storyRef.current.querySelectorAll('img'))
+      await Promise.all(imgs.map(img => img.decode().catch(() => {})))
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+
+      const toPngOpts = { width: STORY_WIDTH, height: renderedHeight, pixelRatio: 1 }
+      // Además del decode: en Safari, la primera vez que un <img> se rasteriza
+      // dentro del <foreignObject> que arma html-to-image suele salir en
+      // blanco — recién en un segundo render la imagen ya quedó "tibia" en el
+      // caché del motor y se pinta bien. Descartamos una primera pasada
+      // cuando el story tiene alguna imagen (el logo).
+      if (imgs.length > 0) await toPng(storyRef.current, toPngOpts)
+      const dataUrl = await toPng(storyRef.current, toPngOpts)
       const suffix = selectedDateStrs.length > 1
         ? `${selectedDateStrs[0]}_${selectedDateStrs[selectedDateStrs.length - 1]}`
         : selectedDateStrs[0]
