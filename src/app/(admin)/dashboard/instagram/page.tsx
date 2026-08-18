@@ -4,7 +4,7 @@ import { Navbar } from '@/components/layout/navbar'
 import { InstagramView } from './instagram-view'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Story para Instagram' }
+export const metadata: Metadata = { title: 'Historia para Instagram' }
 
 export default async function InstagramStoryPage() {
   const supabase = createServerClient()

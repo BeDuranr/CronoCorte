@@ -446,10 +446,10 @@ export function DashboardView({ barbershop, todayAppointments, weekStats, worker
             </button>
           </div>
 
-          {/* Story para Instagram */}
+          {/* Historia para Instagram */}
           <Link href="/dashboard/instagram" className="card p-4 flex items-center justify-between hover:border-brand-red/30 transition-all">
             <div>
-              <p className="font-semibold text-sm text-[rgb(var(--fg))]">Story para Instagram</p>
+              <p className="font-semibold text-sm text-[rgb(var(--fg))]">Historia para Instagram</p>
               <p className="text-xs text-[rgb(var(--fg-secondary))] mt-0.5">Imagen con las horas disponibles del día</p>
             </div>
             <ChevronRight size={16} className="text-[rgb(var(--fg-secondary))] shrink-0" />

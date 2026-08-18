@@ -258,7 +258,7 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-[rgb(var(--fg))]">Story para Instagram</h1>
+          <h1 className="text-2xl font-bold text-[rgb(var(--fg))]">Historia para Instagram</h1>
           <p className="text-sm text-[rgb(var(--fg-secondary))]">Descarga una imagen con las horas disponibles del día para publicar</p>
         </div>
       </div>
