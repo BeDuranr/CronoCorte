@@ -1060,20 +1060,31 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <div className="relative">
-                <span className="text-2xl font-black text-[rgb(var(--fg))] leading-none">
-                  {barbershop.name.charAt(0).toUpperCase()}
-                </span>
-                <span className="absolute top-[8px] left-[-1px] w-[20px] h-[2.5px] bg-[#e63946] rounded-full -rotate-[15deg]" />
-              </div>
-              <div className="flex flex-col leading-none">
-                <span className="text-xs font-black text-[rgb(var(--fg))] tracking-tight">
-                  {barbershop.name.split(' ')[0].toLowerCase()}
-                </span>
-                <span className="text-[8px] font-light text-[#e63946] tracking-[3px]">
-                  {barbershop.name.split(' ').slice(1).join(' ').toLowerCase() || 'barbería'}
-                </span>
-              </div>
+              {barbershop.logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={barbershop.logo_url}
+                  alt={barbershop.name}
+                  className="w-10 h-10 rounded-xl object-cover border border-[rgb(var(--border))]"
+                />
+              ) : (
+                <>
+                  <div className="relative">
+                    <span className="text-2xl font-black text-[rgb(var(--fg))] leading-none">
+                      {barbershop.name.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="absolute top-[8px] left-[-1px] w-[20px] h-[2.5px] bg-[#e63946] rounded-full -rotate-[15deg]" />
+                  </div>
+                  <div className="flex flex-col leading-none">
+                    <span className="text-xs font-black text-[rgb(var(--fg))] tracking-tight">
+                      {barbershop.name.split(' ')[0].toLowerCase()}
+                    </span>
+                    <span className="text-[8px] font-light text-[#e63946] tracking-[3px]">
+                      {barbershop.name.split(' ').slice(1).join(' ').toLowerCase() || 'barbería'}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

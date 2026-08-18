@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Navbar } from '@/components/layout/navbar'
 import { DAYS, accentColorVars, formatPrice } from '@/lib/utils'
 import toast from 'react-hot-toast'
-import { Loader2, Bot, Calendar, Store, Save, CreditCard, Bell, Scissors } from 'lucide-react'
+import { Loader2, Bot, Calendar, Store, Save, CreditCard, Bell, Scissors, Upload, X } from 'lucide-react'
 
 type AgentTone = 'relajado' | 'formal' | 'juvenil'
 type CancelPolicy = 'libre' | '2h' | '24h'
@@ -19,6 +19,7 @@ interface ShopConfig {
   phone: string | null
   description: string | null
   instagram: string | null
+  logo_url: string | null
   transfer_info: string | null
   agent_enabled: boolean
   agent_name: string | null
@@ -65,6 +66,7 @@ export default function ConfiguracionPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
   const [savingSchedule, setSavingSchedule] = useState(false)
   const [tab, setTab] = useState<'negocio' | 'horario' | 'pagos' | 'agente' | 'notificaciones'>('negocio')
   const [shop, setShop] = useState<ShopConfig | null>(null)
@@ -87,7 +89,7 @@ export default function ConfiguracionPage() {
 
     const { data: shopData, error: shopError } = await supabase
       .from('barbershops')
-      .select('id, name, address, phone, description, instagram, transfer_info, agent_enabled, agent_name, agent_tone, agent_prompt_custom, accent_color')
+      .select('id, name, address, phone, description, instagram, logo_url, transfer_info, agent_enabled, agent_name, agent_tone, agent_prompt_custom, accent_color')
       .eq('admin_id', user.id)
       .single()
 
@@ -169,6 +171,63 @@ export default function ConfiguracionPage() {
       toast.error('Error al guardar')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const ALLOWED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+  const MAX_LOGO_SIZE = 2 * 1024 * 1024 // 2MB, igual al límite del bucket
+
+  const handleLogoUpload = async (file: File) => {
+    if (!shop) return
+    if (!ALLOWED_LOGO_TYPES.includes(file.type)) {
+      toast.error('Usa una imagen PNG, JPG o WEBP')
+      return
+    }
+    if (file.size > MAX_LOGO_SIZE) {
+      toast.error('La imagen no puede pesar más de 2MB')
+      return
+    }
+    setUploadingLogo(true)
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `${shop.id}/logo.${ext}`
+      const { error: uploadError } = await supabase.storage
+        .from('barbershop-logos')
+        .upload(path, file, { upsert: true, cacheControl: '3600' })
+      if (uploadError) throw uploadError
+
+      // Cache-bust: el path es siempre el mismo, así que agregamos un query
+      // param para que el navegador no siga mostrando el logo anterior.
+      const { data: { publicUrl } } = supabase.storage.from('barbershop-logos').getPublicUrl(path)
+      const logoUrl = `${publicUrl}?v=${Date.now()}`
+
+      const { error: updateError } = await supabase
+        .from('barbershops')
+        .update({ logo_url: logoUrl })
+        .eq('id', shop.id)
+      if (updateError) throw updateError
+
+      setShop(s => s ? { ...s, logo_url: logoUrl } : s)
+      toast.success('Logo actualizado')
+    } catch {
+      toast.error('No se pudo subir el logo')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  const handleLogoRemove = async () => {
+    if (!shop) return
+    setUploadingLogo(true)
+    try {
+      const { error } = await supabase.from('barbershops').update({ logo_url: null }).eq('id', shop.id)
+      if (error) throw error
+      setShop(s => s ? { ...s, logo_url: null } : s)
+      toast.success('Logo eliminado')
+    } catch {
+      toast.error('No se pudo eliminar el logo')
+    } finally {
+      setUploadingLogo(false)
     }
   }
 
@@ -379,6 +438,49 @@ export default function ConfiguracionPage() {
         {tab === 'negocio' && (
           <div className="grid grid-cols-1 md:grid-cols-[1fr_220px] gap-6 items-start">
             <div className="flex flex-col gap-4">
+              <div>
+                <label className="label">Logo</label>
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-16 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--bg-secondary))] flex items-center justify-center overflow-hidden shrink-0">
+                    {shop.logo_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={shop.logo_url} alt="Logo" className="w-full h-full object-cover" />
+                    ) : (
+                      <Scissors size={22} className="text-[rgb(var(--fg-secondary))]" />
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <label className={`btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 cursor-pointer ${uploadingLogo ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {uploadingLogo ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                        {shop.logo_url ? 'Cambiar' : 'Subir logo'}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          disabled={uploadingLogo}
+                          onChange={e => {
+                            const file = e.target.files?.[0]
+                            if (file) handleLogoUpload(file)
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                      {shop.logo_url && (
+                        <button
+                          onClick={handleLogoRemove}
+                          disabled={uploadingLogo}
+                          className="text-xs text-[rgb(var(--fg-secondary))] hover:text-brand-red flex items-center gap-1 disabled:opacity-50"
+                        >
+                          <X size={12} /> Quitar
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-[rgb(var(--fg-secondary))]">PNG, JPG o WEBP · máx 2MB</p>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="label">Nombre</label>
@@ -494,8 +596,13 @@ export default function ConfiguracionPage() {
               </p>
               <div className="border border-[rgb(var(--border))] rounded-2xl overflow-hidden">
                 <div className="px-3 py-2.5 border-b border-[rgb(var(--border))] flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full bg-brand-red/10 text-brand-red flex items-center justify-center text-xs font-bold">
-                    {shop.name?.charAt(0)}
+                  <div className="w-7 h-7 rounded-full bg-brand-red/10 text-brand-red flex items-center justify-center text-xs font-bold overflow-hidden shrink-0">
+                    {shop.logo_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={shop.logo_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      shop.name?.charAt(0)
+                    )}
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-[rgb(var(--fg))]">{shop.name}</p>
