@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { format, addDays, startOfDay, isBefore } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { calculateAvailableSlots, formatPrice } from '@/lib/utils'
+import { calculateSlotsWithStatus, formatPrice, type SlotStatus } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
 import {
@@ -51,10 +51,10 @@ interface Person {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function groupSlots(slots: string[]) {
-  const morning: string[] = [], afternoon: string[] = [], night: string[] = []
+function groupSlots(slots: SlotStatus[]) {
+  const morning: SlotStatus[] = [], afternoon: SlotStatus[] = [], night: SlotStatus[] = []
   slots.forEach(s => {
-    const h = parseInt(s.split(':')[0])
+    const h = parseInt(s.time.split(':')[0])
     if (h < 13) morning.push(s)
     else if (h < 19) afternoon.push(s)
     else night.push(s)
@@ -286,11 +286,11 @@ function StepDateTime({
   slotIntervalMinutes: number
   peopleCount: number
 }) {
-  const [slots, setSlots] = useState<string[]>([])
+  const [slots, setSlots] = useState<SlotStatus[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [weekOffset, setWeekOffset] = useState(0)
   const [loadedDay, setLoadedDay] = useState<string | null>(null)
-  const slotsCache = useRef<Map<string, string[]>>(new Map())
+  const slotsCache = useRef<Map<string, SlotStatus[]>>(new Map())
 
   const today = startOfDay(new Date())
   const visibleDays = Array.from({ length: 14 }, (_, i) => addDays(today, i + weekOffset * 14))
@@ -323,15 +323,15 @@ function StepDateTime({
         if (res.ok) { const json = await res.json(); existing = json.occupied ?? [] }
       } catch { existing = [] }
 
-      const available = calculateAvailableSlots({
+      const withStatus = calculateSlotsWithStatus({
         availability: avail,
         existingAppointments: existing.map(a => ({ starts_at: a.starts_at, ends_at: a.ends_at })),
         serviceDuration,
         date: dateStr,
         slotIntervalMinutes,
       })
-      slotsCache.current.set(cacheKey, available)
-      setSlots(available)
+      slotsCache.current.set(cacheKey, withStatus)
+      setSlots(withStatus)
       setLoadedDay(dateStr)
     } finally {
       setLoadingSlots(false)
@@ -414,23 +414,26 @@ function StepDateTime({
                 {label}
               </p>
               <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
-                {gs.map(slot => {
-                  const isPicked = selectedTimes.includes(slot)
+                {gs.map(({ time, occupied }) => {
+                  const isPicked = selectedTimes.includes(time)
                   const atCapacity = !isPicked && selectedTimes.length >= peopleCount
+                  const disabled = occupied || atCapacity
                   return (
                     <button
-                      key={slot}
-                      onClick={() => onToggleTime(slot)}
-                      disabled={atCapacity}
+                      key={time}
+                      onClick={() => onToggleTime(time)}
+                      disabled={disabled}
                       className={`py-2 px-1 rounded-lg text-sm font-medium border transition-all ${
                         isPicked
                           ? 'bg-brand-red text-white border-brand-red'
+                          : occupied
+                          ? 'border-[rgb(var(--fg-secondary))]/10 text-[rgb(var(--fg-secondary))]/30 cursor-not-allowed line-through'
                           : atCapacity
                           ? 'border-[rgb(var(--fg-secondary))]/10 text-[rgb(var(--fg-secondary))]/30 cursor-not-allowed'
                           : 'border-[rgb(var(--fg-secondary))]/20 text-[rgb(var(--fg))] hover:border-brand-red hover:text-brand-red'
                       }`}
                     >
-                      {slot}
+                      {time}
                     </button>
                   )
                 })}
