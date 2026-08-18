@@ -30,8 +30,14 @@ interface Props {
   availability: AvailabilityRow[]
 }
 
+interface DayData {
+  dateStr: string
+  dateLabel: string
+  slots: SlotStatus[]
+}
+
 const STORY_WIDTH = 1080
-const STORY_HEIGHT = 1920
+const STORY_MIN_HEIGHT = 1920
 
 function parseHex(hex: string | null | undefined): [number, number, number] {
   const DEFAULT: [number, number, number] = [230, 57, 70]
@@ -60,14 +66,14 @@ function groupSlots(slots: SlotStatus[]) {
 }
 
 // ── El "story" en sí: mismo lenguaje visual que booking-flow (bordes, radios,
-// tachado en las horas ocupadas), renderizado a tamaño real 1080x1920 para
-// que html-to-image lo capture con nitidez sin importar el zoom de vista previa.
+// tachado en las horas ocupadas), renderizado a ancho real 1080 para que
+// html-to-image lo capture con nitidez sin importar el zoom de vista previa.
+// El alto crece con la cantidad de días elegidos (mínimo 1920, formato story).
 function StoryCanvas({
-  barbershop, dateLabel, slots, dark, accent, bookingHost,
+  barbershop, days, dark, accent, bookingHost,
 }: {
   barbershop: Barbershop
-  dateLabel: string
-  slots: SlotStatus[]
+  days: DayData[]
   dark: boolean
   accent: [number, number, number]
   bookingHost: string
@@ -77,8 +83,7 @@ function StoryCanvas({
   const fgSecondary = dark ? '#828282' : '#646464'
   const border = dark ? '#202020' : '#e6e6e6'
   const accentSolid = rgba(accent, 1)
-  const availableCount = slots.filter(s => !s.occupied).length
-  const groups = groupSlots(slots)
+  const totalAvailable = days.reduce((sum, d) => sum + d.slots.filter(s => !s.occupied).length, 0)
   // bookingHost llega vacío en el primer render (server y cliente antes del
   // mount coinciden en "/slug") y se completa post-mount vía useEffect en
   // InstagramView — evita el mismatch de hidratación de usar window.location
@@ -88,77 +93,78 @@ function StoryCanvas({
   return (
     <div
       style={{
-        width: STORY_WIDTH, height: STORY_HEIGHT, boxSizing: 'border-box',
+        width: STORY_WIDTH, minHeight: STORY_MIN_HEIGHT, boxSizing: 'border-box',
         background: bg, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-        overflow: 'hidden', position: 'relative',
+        display: 'flex', flexDirection: 'column', padding: '96px 72px 84px',
       }}
     >
-      <div style={{ position: 'absolute', inset: 0, padding: '96px 72px 84px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
-
-        {/* Marca */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <div style={{ width: 68, height: 68, borderRadius: 9999, background: accentSolid, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Scissors size={34} color="#ffffff" strokeWidth={2} />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '0.09em', textTransform: 'uppercase', color: fgSecondary }}>Barbería</span>
-            <span style={{ fontSize: 42, fontWeight: 800, color: fg, lineHeight: 1.1 }}>{barbershop.name}</span>
-          </div>
+      {/* Marca */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+        <div style={{ width: 68, height: 68, borderRadius: 9999, background: accentSolid, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Scissors size={34} color="#ffffff" strokeWidth={2} />
         </div>
-
-        {/* Fecha */}
-        <div style={{ marginTop: 60 }}>
-          <span style={{ display: 'inline-flex', padding: '12px 22px', borderRadius: 9999, background: rgba(accent, 0.12), color: accentSolid, fontSize: 22, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-            {dateLabel}
-          </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '0.09em', textTransform: 'uppercase', color: fgSecondary }}>Barbería</span>
+          <span style={{ fontSize: 42, fontWeight: 800, color: fg, lineHeight: 1.1 }}>{barbershop.name}</span>
         </div>
+      </div>
 
-        {/* Título */}
-        <div style={{ marginTop: 32 }}>
-          <h1 style={{ margin: 0, fontSize: 66, fontWeight: 800, color: fg, lineHeight: 1.08 }}>Horas disponibles hoy</h1>
-          <p style={{ margin: '14px 0 0', fontSize: 27, color: fgSecondary, fontWeight: 500 }}>
-            {availableCount > 0 ? `${availableCount} horario${availableCount === 1 ? '' : 's'} libre${availableCount === 1 ? '' : 's'} para reservar` : 'Sin horarios libres por ahora'}
-          </p>
-        </div>
+      {/* Título */}
+      <div style={{ marginTop: 56 }}>
+        <h1 style={{ margin: 0, fontSize: 66, fontWeight: 800, color: fg, lineHeight: 1.08 }}>Horas disponibles</h1>
+        <p style={{ margin: '14px 0 0', fontSize: 27, color: fgSecondary, fontWeight: 500 }}>
+          {totalAvailable > 0 ? `${totalAvailable} horario${totalAvailable === 1 ? '' : 's'} libre${totalAvailable === 1 ? '' : 's'} para reservar` : 'Sin horarios libres por ahora'}
+        </p>
+      </div>
 
-        {/* Grilla de horarios */}
-        <div style={{ marginTop: 68, display: 'flex', flexDirection: 'column', gap: 46, flexGrow: 1, overflow: 'hidden' }}>
-          {groups.map(({ label, slots: gs }) => (
-            <div key={label}>
-              <p style={{ margin: '0 0 20px', fontSize: 21, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: fgSecondary }}>{label}</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 18 }}>
-                {gs.map(({ time, occupied }) => (
-                  <div
-                    key={time}
-                    style={{
-                      padding: '26px 8px',
-                      borderRadius: 16,
-                      border: `${occupied ? 1 : 2}px solid ${occupied ? rgba(parseHex(fgSecondary), 0.14) : border}`,
-                      textAlign: 'center',
-                      fontSize: 32,
-                      fontWeight: 700,
-                      color: occupied ? rgba(parseHex(fgSecondary), 0.48) : fg,
-                      textDecoration: occupied ? 'line-through' : 'none',
-                    }}
-                  >
-                    {time}
+      {/* Un bloque por día elegido */}
+      <div style={{ marginTop: 60, display: 'flex', flexDirection: 'column', gap: 60, flexGrow: 1 }}>
+        {days.map(({ dateStr, dateLabel, slots }) => {
+          const groups = groupSlots(slots)
+          return (
+            <div key={dateStr}>
+              <span style={{ display: 'inline-flex', padding: '12px 22px', borderRadius: 9999, background: rgba(accent, 0.12), color: accentSolid, fontSize: 22, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+                {dateLabel}
+              </span>
+              <div style={{ marginTop: 36, display: 'flex', flexDirection: 'column', gap: 40 }}>
+                {groups.map(({ label, slots: gs }) => (
+                  <div key={label}>
+                    <p style={{ margin: '0 0 20px', fontSize: 21, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: fgSecondary }}>{label}</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 18 }}>
+                      {gs.map(({ time, occupied }) => (
+                        <div
+                          key={time}
+                          style={{
+                            padding: '26px 8px',
+                            borderRadius: 16,
+                            border: `${occupied ? 1 : 2}px solid ${occupied ? rgba(parseHex(fgSecondary), 0.14) : border}`,
+                            textAlign: 'center',
+                            fontSize: 32,
+                            fontWeight: 700,
+                            color: occupied ? rgba(parseHex(fgSecondary), 0.48) : fg,
+                            textDecoration: occupied ? 'line-through' : 'none',
+                          }}
+                        >
+                          {time}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
-          ))}
-        </div>
+          )
+        })}
+      </div>
 
-        {/* CTA */}
-        <div style={{ marginTop: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
-          <div style={{ width: '100%', boxSizing: 'border-box', background: accentSolid, color: '#ffffff', textAlign: 'center', padding: 30, borderRadius: 20, fontSize: 36, fontWeight: 800 }}>
-            Reserva tu hora
-          </div>
-          <span style={{ fontSize: 23, color: fgSecondary, fontWeight: 600, letterSpacing: '0.02em' }}>
-            {bookingUrl}{barbershop.instagram ? ` · @${barbershop.instagram}` : ''}
-          </span>
+      {/* CTA */}
+      <div style={{ marginTop: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
+        <div style={{ width: '100%', boxSizing: 'border-box', background: accentSolid, color: '#ffffff', textAlign: 'center', padding: 30, borderRadius: 20, fontSize: 36, fontWeight: 800 }}>
+          Reserva tu hora
         </div>
-
+        <span style={{ fontSize: 23, color: fgSecondary, fontWeight: 600, letterSpacing: '0.02em' }}>
+          {bookingUrl}{barbershop.instagram ? ` · @${barbershop.instagram}` : ''}
+        </span>
       </div>
     </div>
   )
@@ -168,19 +174,20 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
   const [workerId, setWorkerId] = useState(workers[0]?.id ?? '')
   // Arranca en el primer día con disponibilidad activa (no necesariamente
   // hoy) para no aterrizar en un día sin horarios y con la descarga bloqueada.
-  const [selectedDate, setSelectedDate] = useState(() => {
+  const [selectedDates, setSelectedDates] = useState<Date[]>(() => {
     const today = startOfDay(new Date())
     const activeDays = new Set(availability.map(a => a.day_of_week))
     for (let i = 0; i < 14; i++) {
       const day = addDays(today, i)
-      if (activeDays.has(day.getDay())) return day
+      if (activeDays.has(day.getDay())) return [day]
     }
-    return today
+    return [today]
   })
   const [dark, setDark] = useState(true)
-  const [slots, setSlots] = useState<SlotStatus[]>([])
+  const [daysData, setDaysData] = useState<DayData[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [renderedHeight, setRenderedHeight] = useState(STORY_MIN_HEIGHT)
   const storyRef = useRef<HTMLDivElement>(null)
 
   const accent = parseHex(barbershop.accent_color)
@@ -188,44 +195,73 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
   const today = startOfDay(new Date())
   const visibleDays = Array.from({ length: 14 }, (_, i) => addDays(today, i))
   const availableDaysOfWeek = useMemo(() => new Set(availability.map(a => a.day_of_week)), [availability])
-  const dateStr = format(selectedDate, 'yyyy-MM-dd')
-  const dateLabel = format(selectedDate, "EEEE d 'de' MMMM", { locale: es })
+  const selectedDateStrs = useMemo(
+    () => selectedDates.map(d => format(d, 'yyyy-MM-dd')).sort(),
+    [selectedDates]
+  )
 
   const [bookingHost, setBookingHost] = useState('')
   useEffect(() => { setBookingHost(window.location.host) }, [])
 
+  const toggleDate = (day: Date) => {
+    const str = format(day, 'yyyy-MM-dd')
+    setSelectedDates(prev => {
+      const exists = prev.some(d => format(d, 'yyyy-MM-dd') === str)
+      return exists ? prev.filter(d => format(d, 'yyyy-MM-dd') !== str) : [...prev, day]
+    })
+  }
+
   useEffect(() => {
-    if (!workerId) { setSlots([]); return }
+    if (!workerId || selectedDateStrs.length === 0) { setDaysData([]); return }
     let cancelled = false
 
     const load = async () => {
       setLoadingSlots(true)
       try {
-        const dow = selectedDate.getDay()
-        const avail = availability.find(a => a.day_of_week === dow)
-        if (!avail) { if (!cancelled) setSlots([]); return }
+        const results = await Promise.all(selectedDateStrs.map(async (dateStr): Promise<DayData | null> => {
+          const dow = new Date(`${dateStr}T12:00:00`).getDay()
+          const avail = availability.find(a => a.day_of_week === dow)
+          if (!avail) return null
 
-        let occupied: { starts_at: string; ends_at: string }[] = []
-        try {
-          const res = await fetch(`/api/availability?worker_id=${encodeURIComponent(workerId)}&date=${dateStr}`)
-          if (res.ok) { const json = await res.json(); occupied = json.occupied ?? [] }
-        } catch { occupied = [] }
+          let occupied: { starts_at: string; ends_at: string }[] = []
+          try {
+            const res = await fetch(`/api/availability?worker_id=${encodeURIComponent(workerId)}&date=${dateStr}`)
+            if (res.ok) { const json = await res.json(); occupied = json.occupied ?? [] }
+          } catch { occupied = [] }
 
-        const withStatus = calculateSlotsWithStatus({
-          availability: avail,
-          existingAppointments: occupied,
-          serviceDuration: slotIntervalMinutes,
-          date: dateStr,
-          slotIntervalMinutes,
-        })
-        if (!cancelled) setSlots(withStatus)
+          const slots = calculateSlotsWithStatus({
+            availability: avail,
+            existingAppointments: occupied,
+            serviceDuration: slotIntervalMinutes,
+            date: dateStr,
+            slotIntervalMinutes,
+          })
+          const dateLabel = format(new Date(`${dateStr}T12:00:00`), "EEEE d 'de' MMMM", { locale: es })
+          return { dateStr, dateLabel, slots }
+        }))
+        if (!cancelled) setDaysData(results.filter((d): d is DayData => d !== null))
       } finally {
         if (!cancelled) setLoadingSlots(false)
       }
     }
     load()
     return () => { cancelled = true }
-  }, [workerId, dateStr, availability, slotIntervalMinutes])
+  }, [workerId, selectedDateStrs, availability, slotIntervalMinutes])
+
+  // El alto del story crece con la cantidad de días elegidos: medimos el
+  // contenido real para que la vista previa y la descarga coincidan exacto.
+  useEffect(() => {
+    const el = storyRef.current
+    if (!el) return
+    const ro = new ResizeObserver(entries => {
+      const h = entries[0]?.contentRect.height
+      if (h) setRenderedHeight(Math.max(STORY_MIN_HEIGHT, Math.ceil(h)))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const totalSlots = daysData.reduce((sum, d) => sum + d.slots.length, 0)
 
   const handleDownload = async () => {
     if (!storyRef.current) return
@@ -233,11 +269,14 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
     try {
       const dataUrl = await toPng(storyRef.current, {
         width: STORY_WIDTH,
-        height: STORY_HEIGHT,
+        height: renderedHeight,
         pixelRatio: 1,
       })
       const link = document.createElement('a')
-      link.download = `${barbershop.slug}-horarios-${dateStr}.png`
+      const suffix = selectedDateStrs.length > 1
+        ? `${selectedDateStrs[0]}_${selectedDateStrs[selectedDateStrs.length - 1]}`
+        : selectedDateStrs[0]
+      link.download = `${barbershop.slug}-horarios-${suffix}.png`
       link.href = dataUrl
       link.click()
     } catch {
@@ -259,7 +298,7 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
         </Link>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-[rgb(var(--fg))]">Historia para Instagram</h1>
-          <p className="text-sm text-[rgb(var(--fg-secondary))]">Descarga una imagen con las horas disponibles del día para publicar</p>
+          <p className="text-sm text-[rgb(var(--fg-secondary))]">Descarga una imagen con las horas disponibles para publicar</p>
         </div>
       </div>
 
@@ -269,11 +308,11 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
         <div className="flex flex-col items-center">
           <div
             className="rounded-2xl overflow-hidden border border-[rgb(var(--border))]"
-            style={{ width: STORY_WIDTH / 3, height: STORY_HEIGHT / 3 }}
+            style={{ width: STORY_WIDTH / 3, height: renderedHeight / 3 }}
           >
-            <div style={{ width: STORY_WIDTH, height: STORY_HEIGHT, transform: 'scale(0.3333)', transformOrigin: 'top left' }}>
+            <div style={{ width: STORY_WIDTH, transform: 'scale(0.3333)', transformOrigin: 'top left' }}>
               <div ref={storyRef}>
-                <StoryCanvas barbershop={barbershop} dateLabel={dateLabel} slots={slots} dark={dark} accent={accent} bookingHost={bookingHost} />
+                <StoryCanvas barbershop={barbershop} days={daysData} dark={dark} accent={accent} bookingHost={bookingHost} />
               </div>
             </div>
           </div>
@@ -301,16 +340,17 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
           )}
 
           <div className="card p-4">
-            <p className="label mb-2">Día</p>
+            <p className="label mb-2">Días</p>
+            <p className="text-xs text-[rgb(var(--fg-secondary))] mb-2 -mt-1">Elige uno o varios</p>
             <div className="grid grid-cols-7 gap-1">
               {visibleDays.map((day, i) => {
                 const isAvail = availableDaysOfWeek.has(day.getDay())
-                const isSelected = format(day, 'yyyy-MM-dd') === dateStr
+                const isSelected = selectedDateStrs.includes(format(day, 'yyyy-MM-dd'))
                 const isPast = isBefore(day, today)
                 return (
                   <button
                     key={i}
-                    onClick={() => !isPast && isAvail && setSelectedDate(day)}
+                    onClick={() => !isPast && isAvail && toggleDate(day)}
                     disabled={isPast || !isAvail}
                     className={`flex flex-col items-center py-2 px-0.5 rounded-lg text-center transition-all ${
                       isSelected ? 'bg-brand-red text-white' :
@@ -346,7 +386,7 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
 
           <button
             onClick={handleDownload}
-            disabled={downloading || loadingSlots || slots.length === 0}
+            disabled={downloading || loadingSlots || totalSlots === 0}
             className="btn-primary w-full flex items-center justify-center gap-2"
           >
             {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
