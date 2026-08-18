@@ -71,13 +71,14 @@ function groupSlots(slots: SlotStatus[]) {
 // html-to-image lo capture con nitidez sin importar el zoom de vista previa.
 // El alto crece con la cantidad de días elegidos (mínimo 1920, formato story).
 function StoryCanvas({
-  barbershop, days, dark, accent, bookingHost,
+  barbershop, days, dark, accent, bookingHost, logoDataUrl,
 }: {
   barbershop: Barbershop
   days: DayData[]
   dark: boolean
   accent: [number, number, number]
   bookingHost: string
+  logoDataUrl: string | null
 }) {
   const bg = dark ? '#0e0e0e' : '#ffffff'
   const fg = dark ? '#ffffff' : '#111111'
@@ -101,12 +102,11 @@ function StoryCanvas({
     >
       {/* Marca */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-        {barbershop.logo_url ? (
+        {logoDataUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={barbershop.logo_url}
+            src={logoDataUrl}
             alt=""
-            crossOrigin="anonymous"
             style={{ width: 68, height: 68, borderRadius: 9999, objectFit: 'cover', flexShrink: 0 }}
           />
         ) : (
@@ -213,6 +213,29 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
 
   const [bookingHost, setBookingHost] = useState('')
   useEffect(() => { setBookingHost(window.location.host) }, [])
+
+  // Convertimos el logo a data URL en vez de dejar que html-to-image lo
+  // resuelva por su cuenta: Safari/WebKit (iOS, y Chrome en iPhone que
+  // también usa WebKit) no siempre carga imágenes de otro origen dentro del
+  // <foreignObject> que arma la librería para exportar, así que el logo
+  // aparecía en blanco al descargar desde el celular. Con la imagen ya
+  // embebida como data URL no hace falta ningún fetch al momento de exportar.
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!barbershop.logo_url) { setLogoDataUrl(null); return }
+    let cancelled = false
+    fetch(barbershop.logo_url)
+      .then(res => res.blob())
+      .then(blob => new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      }))
+      .then(dataUrl => { if (!cancelled) setLogoDataUrl(dataUrl) })
+      .catch(() => { if (!cancelled) setLogoDataUrl(null) })
+    return () => { cancelled = true }
+  }, [barbershop.logo_url])
 
   const toggleDate = (day: Date) => {
     const str = format(day, 'yyyy-MM-dd')
@@ -346,7 +369,7 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
           >
             <div style={{ width: STORY_WIDTH, transform: 'scale(0.3333)', transformOrigin: 'top left' }}>
               <div ref={storyRef}>
-                <StoryCanvas barbershop={barbershop} days={daysData} dark={dark} accent={accent} bookingHost={bookingHost} />
+                <StoryCanvas barbershop={barbershop} days={daysData} dark={dark} accent={accent} bookingHost={bookingHost} logoDataUrl={logoDataUrl} />
               </div>
             </div>
           </div>
