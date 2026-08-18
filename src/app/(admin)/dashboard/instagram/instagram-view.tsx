@@ -15,6 +15,7 @@ interface Barbershop {
   slug: string
   accent_color: string | null
   instagram: string | null
+  logo_url: string | null
   slot_interval_minutes: number | null
 }
 
@@ -100,9 +101,19 @@ function StoryCanvas({
     >
       {/* Marca */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-        <div style={{ width: 68, height: 68, borderRadius: 9999, background: accentSolid, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Scissors size={34} color="#ffffff" strokeWidth={2} />
-        </div>
+        {barbershop.logo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={barbershop.logo_url}
+            alt=""
+            crossOrigin="anonymous"
+            style={{ width: 68, height: 68, borderRadius: 9999, objectFit: 'cover', flexShrink: 0 }}
+          />
+        ) : (
+          <div style={{ width: 68, height: 68, borderRadius: 9999, background: accentSolid, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Scissors size={34} color="#ffffff" strokeWidth={2} />
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '0.09em', textTransform: 'uppercase', color: fgSecondary }}>Barbería</span>
           <span style={{ fontSize: 42, fontWeight: 800, color: fg, lineHeight: 1.1 }}>{barbershop.name}</span>

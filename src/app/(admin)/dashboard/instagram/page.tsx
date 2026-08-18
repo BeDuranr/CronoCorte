@@ -22,7 +22,7 @@ export default async function InstagramStoryPage() {
 
   const { data: barbershop } = await supabase
     .from('barbershops')
-    .select('id, name, slug, accent_color, instagram, slot_interval_minutes')
+    .select('id, name, slug, accent_color, instagram, logo_url, slot_interval_minutes')
     .eq('admin_id', user.id)
     .single()
 
