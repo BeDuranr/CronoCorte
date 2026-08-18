@@ -272,13 +272,36 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
         height: renderedHeight,
         pixelRatio: 1,
       })
-      const link = document.createElement('a')
       const suffix = selectedDateStrs.length > 1
         ? `${selectedDateStrs[0]}_${selectedDateStrs[selectedDateStrs.length - 1]}`
         : selectedDateStrs[0]
-      link.download = `${barbershop.slug}-horarios-${suffix}.png`
+      const filename = `${barbershop.slug}-horarios-${suffix}.png`
+
+      // En mobile (iOS Safari, navegadores in-app) el <a download> con data
+      // URI no siempre dispara la descarga. Si el navegador soporta
+      // compartir archivos, usamos el share sheet nativo — de paso permite
+      // compartir directo a Instagram sin pasar por la galería.
+      if (navigator.canShare && navigator.share) {
+        try {
+          const blob = await (await fetch(dataUrl)).blob()
+          const file = new File([blob], filename, { type: 'image/png' })
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file] })
+            return
+          }
+        } catch (shareErr: any) {
+          if (shareErr?.name === 'AbortError') return
+          // el share falló (ej. se perdió el gesto del usuario tras la espera
+          // de toPng) — seguimos con la descarga normal como respaldo
+        }
+      }
+
+      const link = document.createElement('a')
+      link.download = filename
       link.href = dataUrl
+      document.body.appendChild(link)
       link.click()
+      document.body.removeChild(link)
     } catch {
       toast.error('No se pudo generar la imagen')
     } finally {
