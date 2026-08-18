@@ -60,8 +60,17 @@ export function toSlug(name: string): string {
     .replace(/\s+/g, '-')
 }
 
-// Calcular slots disponibles para un día
-export function calculateAvailableSlots({
+export interface SlotStatus {
+  time: string // 'HH:mm'
+  occupied: boolean
+}
+
+// Calcular todos los horarios del día (dentro de la ventana de atención y ya
+// pasado el filtro de anticipación), marcando cuáles están ocupados por una
+// cita/bloqueo existente. Base compartida de calculateAvailableSlots: esta
+// versión conserva los horarios ocupados (en vez de descartarlos) para que la
+// UI pueda mostrarlos tachados en lugar de simplemente hacerlos desaparecer.
+export function calculateSlotsWithStatus({
   availability,
   existingAppointments,
   serviceDuration,
@@ -80,8 +89,8 @@ export function calculateAvailableSlots({
   // Cada cuántos minutos se ofrece un horario (configurable por barbería,
   // ver barbershops.slot_interval_minutes). Antes estaba fijo en 60.
   slotIntervalMinutes?: number
-}): string[] {
-  const slots: string[] = []
+}): SlotStatus[] {
+  const slots: SlotStatus[] = []
 
   // Anticipación mínima: no se pueden reservar horas que empiecen dentro de
   // los próximos N minutos (0 = sin límite, para citas manuales del admin).
@@ -156,14 +165,25 @@ export function calculateAvailableSlots({
       tooSoon = earliestIsSameDay ? slotMinutes < earliestChileMinutes : true
     }
 
-    if (!isBooked && !tooSoon) {
-      slots.push(format(current, 'HH:mm'))
+    if (!tooSoon) {
+      slots.push({ time: format(current, 'HH:mm'), occupied: isBooked })
     }
 
     current = addMinutes(current, slotIntervalMinutes)
   }
 
   return slots
+}
+
+// Calcular slots disponibles para un día (sin los ocupados). Wrapper sobre
+// calculateSlotsWithStatus para los casos que no necesitan mostrar los
+// horarios ocupados (p.ej. la cita manual del admin).
+export function calculateAvailableSlots(
+  params: Parameters<typeof calculateSlotsWithStatus>[0]
+): string[] {
+  return calculateSlotsWithStatus(params)
+    .filter(s => !s.occupied)
+    .map(s => s.time)
 }
 
 // ── Franjas libres de un día (para elegir un rango a bloquear) ─────────────
