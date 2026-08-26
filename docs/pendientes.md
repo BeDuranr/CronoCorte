@@ -24,12 +24,9 @@
 
 ## 🟠 Bugs e inconsistencias
 
-| # | Problema | Dónde | Fix propuesto | Estado |
-|---|----------|-------|-----|--------|
-| 1 | `schema.sql` desincronizado con el código real | `supabase/schema.sql` | Volcar schema real y versionar con migraciones CLI | 🟠 Pendiente |
-| 2 | Webhook aplica comprobante a "la cita más próxima" del teléfono; puede confirmar la equivocada si hay 2 pendientes | `api/whatsapp/webhook/route.ts` | Asociar flujo de pago a cita específica | 🟠 Pendiente |
+Ninguno abierto por ahora.
 
-Resueltos: policy muerta `cancel by token` (eliminada), `booking-flow.backup.tsx` versionado por error (eliminado), `/api/whatsapp/notify` público sin protección (ahora requiere `cancel_token`).
+Resueltos: policy muerta `cancel by token` (eliminada), `booking-flow.backup.tsx` versionado por error (eliminado), `/api/whatsapp/notify` público sin protección (ahora requiere `cancel_token`), **webhook confirmaba "la cita más próxima" en vez de la correcta** (`src/lib/receipt-matching.ts`: `selectReceiptTarget` + `matchRecipient` deciden por monto ±5% y datos del destinatario cuando hay varias citas pendientes del mismo teléfono; commits `27c9a4a3`/`50ea7aac`, 2026-07-10/14, con tests en `receipt-matching.test.ts`), **`schema.sql` desincronizado** (regenerado 2026-08-24 incorporando `slot_interval_minutes`, policies+constraint de `blocked_slots`, y bucket/policies de `barbershop-logos`; verificado tabla/columna por columna contra la API REST en vivo de Supabase — la decisión de migrar a Supabase CLI quedó descartada por ahora, se sigue versionando con archivos `.sql` sueltos aplicados a mano en el Dashboard. Pendiente aparte, no bloqueante: policies/índices/constraints no se re-verificaron contra `pg_policies`/`pg_indexes` en vivo porque el MCP de Supabase no estuvo disponible en esa sesión — se transcribieron desde los 4 archivos de migración ya aplicados, que son la fuente de verdad documentada).
 
 ---
 
@@ -37,29 +34,24 @@ Resueltos: policy muerta `cancel by token` (eliminada), `booking-flow.backup.tsx
 
 | # | Optimización | Estado |
 |---|-------------|--------|
-| 1 | Middleware consulta `user_profiles` en cada request — guardar rol en JWT claim | 🟡 Pendiente |
-| 2 | Service role usado de más en `create`, `availability`, `cancel` | 🟡 Pendiente |
-| 3 | Chequeo de conflictos en `create` hace 1 query por bloque | 🟡 Pendiente |
-| 4 | `booking-flow.tsx` con ~1100 líneas — dividir en componentes | 🟡 Pendiente |
+| 1 | Middleware consulta `user_profiles` en cada request — guardar rol en JWT claim | 🟡 Pendiente — confirmado, `middleware.ts:45-49` sigue haciendo el `select` por request |
+| 2 | Service role usado de más en `create`, `availability`, `cancel` | 🟡 Pendiente — confirmado, los tres siguen usando solo `createAdminClient()` |
+| 3 | Chequeo de conflictos en `create` hace 1 query por bloque | 🟡 Pendiente — confirmado, `appointments/create/route.ts:126-145` hace 2 queries (`appointments` + `blocked_slots`) por cada bloque en el loop |
+| 4 | `booking-flow.tsx` con ~1100 líneas — dividir en componentes | 🟡 Pendiente — empeoró: ahora son 1252 líneas |
 
 Resueltas: cron en loop secuencial (ahora `Promise.allSettled`), dependencias muertas `@google/genai`/`@google/generative-ai` (eliminadas), página pública sin caché (ahora ISR `revalidate=300`), falta de validación server-side de `worker_id`/`service_id` (agregada).
 
 ---
 
-## Pendiente aparte: cambio de display name WhatsApp
+## ✅ Resuelto aparte: cambio de display name WhatsApp
 
-- Ticket abierto en Twilio para cambiar "JamonBarber" → "CronoCorte".
-- Bloqueado por verificación de negocio en Meta (requiere certificado SII).
-- Logo SVG ya generado (`cronocorte-logo.svg`, 640×640px) y subido a Twilio.
-- Retomar cuando se tenga inicio de actividades en SII.
+- Ticket de Twilio resuelto: "JamonBarber" → "CronoCorte", con número nuevo.
+- Certificado de inicio de actividades SII ya obtenido, verificación de negocio en Meta completada.
 
 ---
 
 ## Orden sugerido
 
-1. Bug #2 (webhook con múltiples citas pendientes) — afecta directamente a clientes reales.
-2. Bug #1 (schema desincronizado) — base para trabajo futuro con migraciones versionadas.
-3. Optimizaciones según tiempo disponible.
-4. Cambio display name WhatsApp → cuando se tenga certificado SII.
+1. Optimizaciones según tiempo disponible.
 
 > Nota: una versión anterior de este documento listaba "RLS workers expone calendar_token" como pendiente en este orden sugerido, pero ese ítem ya está marcado como resuelto arriba — quedó desactualizado. Lo dejo fuera de la lista; avísame si en realidad seguía pendiente algo específico de ahí.

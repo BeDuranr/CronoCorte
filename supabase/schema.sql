@@ -1,6 +1,9 @@
 -- ═══════════════════════════════════════════════════════════
 -- CRONO CORTE — Schema completo de base de datos
--- Snapshot fiel de la BD real, generado por introspección el 2026-07-13.
+-- Snapshot fiel de la BD real. Introspección inicial el 2026-07-13;
+-- actualizado el 2026-08-24 incorporando las migraciones aplicadas desde
+-- entonces (20260722, 20260724, 20260818 x2 — ver supabase/*.sql sueltos
+-- para el historial completo, que se conserva aparte de este archivo).
 -- Fuente de verdad: la base de datos de producción (Supabase).
 -- Ejecutar en: Supabase Dashboard → SQL Editor
 --
@@ -18,7 +21,8 @@
 -- ──────────────────────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
--- Requerida por el constraint anti-doble-reserva (EXCLUDE USING gist).
+-- Requerida por los constraints anti-solapamiento (EXCLUDE USING gist) de
+-- appointments y blocked_slots.
 CREATE EXTENSION IF NOT EXISTS "btree_gist";
 
 -- ──────────────────────────────────────────────────────────
@@ -62,6 +66,8 @@ CREATE TABLE barbershops (
   is_active                   BOOLEAN DEFAULT TRUE,
   accent_color                VARCHAR DEFAULT '#e63946',
   -- Reservas / cancelación / recordatorios
+  slot_interval_minutes       INTEGER NOT NULL DEFAULT 60      -- granularidad de los horarios ofrecidos
+                                 CHECK (slot_interval_minutes IN (15, 30, 60)),
   cancel_policy               TEXT DEFAULT '2h',               -- 'libre' | '2h' | '24h'
   reminder_timings            TEXT[] DEFAULT '{24h}'::text[],  -- subconjunto de {'24h','2h'}
   whatsapp_template_confirmed TEXT,
@@ -102,7 +108,8 @@ CREATE TABLE services (
   name             VARCHAR NOT NULL,
   description      TEXT,
   price            NUMERIC NOT NULL DEFAULT 0,
-  duration_minutes INTEGER NOT NULL DEFAULT 30,               -- el booking usa bloques de 60 min
+  duration_minutes INTEGER NOT NULL DEFAULT 30,               -- el bloque real de la grilla lo define
+                                                                -- barbershops.slot_interval_minutes (60 por defecto)
   is_active        BOOLEAN DEFAULT TRUE,
   sort_order       INTEGER DEFAULT 0
 );
@@ -132,6 +139,16 @@ CREATE TABLE blocked_slots (
   ends_at   TIMESTAMPTZ NOT NULL,
   reason    TEXT
 );
+
+-- Anti-solapamiento: un barbero no puede tener dos bloqueos superpuestos.
+-- Mismo patrón que no_double_booking en appointments. Requiere btree_gist.
+-- (migración 20260722_blocked_slots_policies.sql)
+ALTER TABLE blocked_slots
+  ADD CONSTRAINT no_overlapping_blocks
+  EXCLUDE USING gist (
+    worker_id WITH =,
+    tstzrange(starts_at, ends_at) WITH &&
+  );
 
 -- ──────────────────────────────────────────────────────────
 -- portfolio_photos
@@ -240,7 +257,7 @@ ALTER TABLE barbershops      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workers          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE services         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE availability     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE blocked_slots    ENABLE ROW LEVEL SECURITY;  -- RLS ON sin policies: solo service role accede
+ALTER TABLE blocked_slots    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE appointments     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portfolio_photos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles    ENABLE ROW LEVEL SECURITY;
@@ -301,6 +318,24 @@ CREATE POLICY "worker manages own availability" ON availability
 CREATE POLICY "public read availability" ON availability
   FOR SELECT USING (TRUE);
 
+-- ── blocked_slots: admin y worker gestionan (mismo patrón que availability) ──
+-- Habilitadas en 20260722_blocked_slots_policies.sql. Antes de esta migración
+-- la tabla tenía RLS ON sin policies (inaccesible incluso para el admin) y el
+-- feature de "bloquear horario" insertaba filas en appointments con un status
+-- inexistente en el enum, por lo que el insert fallaba siempre.
+CREATE POLICY "worker manages own blocked slots" ON blocked_slots
+  FOR ALL USING (
+    worker_id IN (SELECT id FROM workers WHERE user_id = auth.uid())
+  );
+CREATE POLICY "admin manages blocked slots" ON blocked_slots
+  FOR ALL USING (
+    worker_id IN (
+      SELECT id FROM workers WHERE barbershop_id IN (
+        SELECT id FROM barbershops WHERE admin_id = auth.uid()
+      )
+    )
+  );
+
 -- ── appointments: admin ve/gestiona las de su barbería; worker ve las suyas ──
 -- NOTA: no hay policy de INSERT para anon/authenticated. El booking real corre
 -- en /api/appointments/create con service role (bypasea RLS). Las policies
@@ -343,3 +378,69 @@ GRANT SELECT ON public_workers TO anon, authenticated;
 REVOKE SELECT ON public.workers FROM anon;
 GRANT SELECT (id, barbershop_id, name, specialty, avatar_url, is_active)
   ON public.workers TO anon;
+
+-- ──────────────────────────────────────────────────────────
+-- STORAGE — buckets y policies
+-- ──────────────────────────────────────────────────────────
+-- barbershop-logos: bucket público de lectura (el logo se muestra en la
+-- página pública de reservas y en la historia de Instagram, ambas sin
+-- autenticación). Solo el admin dueño de la barbería puede subir/actualizar/
+-- borrar su propio logo. Convención de path: {barbershop_id}/logo.<ext>
+-- (migraciones 20260818_create_barbershop_logos_bucket.sql y
+-- 20260818_fix_barbershop_logos_policies.sql — la segunda corrige un bug de
+-- ambigüedad de columna en las policies de la primera, ver nota abajo).
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'barbershop-logos',
+  'barbershop-logos',
+  TRUE,
+  2097152, -- 2MB
+  ARRAY['image/png', 'image/jpeg', 'image/webp']
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Lectura pública
+CREATE POLICY "barbershop_logos_public_read"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'barbershop-logos');
+
+-- Solo el admin dueño de la barbería puede subir/actualizar/borrar en su
+-- propia carpeta. IMPORTANTE: storage.objects.name se califica
+-- explícitamente — barbershops también tiene una columna "name", y dentro
+-- del EXISTS Postgres resolvía "name" contra barbershops (b) en vez de contra
+-- storage.objects, así que storage.foldername(name) partía el NOMBRE DEL
+-- NEGOCIO en vez del path del archivo y la policy rechazaba todas las
+-- subidas, incluso las del dueño legítimo (bug de la migración original,
+-- corregido en 20260818_fix_barbershop_logos_policies.sql).
+CREATE POLICY "barbershop_logos_owner_insert"
+ON storage.objects FOR INSERT
+WITH CHECK (
+  bucket_id = 'barbershop-logos'
+  AND EXISTS (
+    SELECT 1 FROM public.barbershops b
+    WHERE b.id::text = (storage.foldername(storage.objects.name))[1]
+    AND b.admin_id = auth.uid()
+  )
+);
+
+CREATE POLICY "barbershop_logos_owner_update"
+ON storage.objects FOR UPDATE
+USING (
+  bucket_id = 'barbershop-logos'
+  AND EXISTS (
+    SELECT 1 FROM public.barbershops b
+    WHERE b.id::text = (storage.foldername(storage.objects.name))[1]
+    AND b.admin_id = auth.uid()
+  )
+);
+
+CREATE POLICY "barbershop_logos_owner_delete"
+ON storage.objects FOR DELETE
+USING (
+  bucket_id = 'barbershop-logos'
+  AND EXISTS (
+    SELECT 1 FROM public.barbershops b
+    WHERE b.id::text = (storage.foldername(storage.objects.name))[1]
+    AND b.admin_id = auth.uid()
+  )
+);
