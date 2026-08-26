@@ -78,6 +78,38 @@ function Stepper({
   currentVisual: number
   onClickVisual: (v: number) => void
 }) {
+  const circleRefs = useRef<(HTMLDivElement | null)[]>([])
+  const fillRefs = useRef<(HTMLDivElement | null)[]>([])
+  const prevVisual = useRef(currentVisual)
+
+  // Rellena/vacía las líneas conectoras y hace "pop" el círculo activo
+  // cada vez que se avanza o retrocede de paso.
+  useEffect(() => {
+    let cancelled = false
+
+    import('animejs').then(({ animate }) => {
+      if (cancelled) return
+
+      fillRefs.current.forEach((el, i) => {
+        if (!el) return
+        animate(el, { width: i < currentVisual ? '100%' : '0%', duration: 380, ease: 'outQuad' })
+      })
+
+      const activeCircle = circleRefs.current[currentVisual]
+      if (activeCircle && prevVisual.current !== currentVisual) {
+        animate(activeCircle, {
+          scale: [
+            { to: 1.18, duration: 150, ease: 'outQuad' },
+            { to: 1, duration: 280, ease: 'outElastic' },
+          ],
+        })
+      }
+      prevVisual.current = currentVisual
+    })
+
+    return () => { cancelled = true }
+  }, [currentVisual])
+
   return (
     <div className="border-b border-[rgb(var(--border))]">
     <div className="max-w-lg md:max-w-2xl mx-auto flex items-start px-5 py-3">
@@ -89,7 +121,8 @@ function Stepper({
             style={{ cursor: i < currentVisual ? 'pointer' : 'default' }}
           >
             <div
-              className={`w-[30px] h-[30px] rounded-full border-[1.5px] flex items-center justify-center text-[12px] font-bold transition-all ${
+              ref={el => { circleRefs.current[i] = el }}
+              className={`w-[30px] h-[30px] rounded-full border-[1.5px] flex items-center justify-center text-[12px] font-bold transition-colors ${
                 i === currentVisual
                   ? 'border-brand-red bg-brand-red text-white'
                   : i < currentVisual
@@ -100,7 +133,7 @@ function Stepper({
               {i < currentVisual ? <Check size={12} /> : i + 1}
             </div>
             <span
-              className={`text-[9px] font-medium mt-1 whitespace-nowrap ${
+              className={`text-[9px] font-medium mt-1 whitespace-nowrap transition-colors ${
                 i === currentVisual
                   ? 'text-[rgb(var(--fg))] font-semibold'
                   : 'text-[rgb(var(--fg-secondary))]'
@@ -110,13 +143,13 @@ function Stepper({
             </span>
           </button>
           {i < labels.length - 1 && (
-            <div
-              className={`h-px flex-1 mx-1 mt-[15px] transition-all ${
-                i < currentVisual
-                  ? 'bg-brand-red'
-                  : 'bg-[rgb(var(--fg-secondary))]/20'
-              }`}
-            />
+            <div className="relative h-px flex-1 mx-1 mt-[15px] bg-[rgb(var(--fg-secondary))]/20 overflow-hidden">
+              <div
+                ref={el => { fillRefs.current[i] = el }}
+                className="absolute inset-y-0 left-0 h-full bg-brand-red"
+                style={{ width: '0%' }}
+              />
+            </div>
           )}
         </div>
       ))}
