@@ -24,7 +24,10 @@ function checkRateLimit(ip: string): boolean {
 }
 
 const VISION_MODEL = 'qwen/qwen3.6-27b'
-const TEXT_MODEL   = 'llama-3.3-70b-versatile'
+// llama-3.3-70b-versatile fue retirado de Groq (model_not_found); modelo
+// distinto al de visión a propósito, para no competir por el mismo cupo
+// diario con la validación de comprobantes de pago.
+const TEXT_MODEL   = 'openai/gpt-oss-120b'
 
 export async function POST(req: NextRequest) {
   try {
