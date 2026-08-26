@@ -11,3 +11,6 @@ out/
 next-env.d.ts
 .vercel
 supabase/.temp/
+
+# Claude Code: config/memoria local, no es código del proyecto
+.claude/
