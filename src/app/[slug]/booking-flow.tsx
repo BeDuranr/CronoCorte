@@ -7,6 +7,7 @@ import { calculateSlotsWithStatus, formatPrice, type SlotStatus } from '@/lib/ut
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
 import { SuccessCheck } from './success-check'
+import { useReveal, useStaggerReveal } from './use-reveal'
 import {
   ChevronLeft, Clock, Check, Loader2,
   Instagram, MapPin, Scissors, Phone, Plus, Copy, Calendar,
@@ -144,6 +145,7 @@ function StepService({
 }) {
   const selected = people[activePerson]?.services ?? []
   const isMulti = people.length > 1
+  const listRef = useStaggerReveal<HTMLDivElement>('[data-reveal-item]', { watch: [services.length] })
 
   return (
     <div className="flex flex-col gap-3">
@@ -178,40 +180,42 @@ function StepService({
       )}
 
       {/* Servicio cards */}
-      {services.map((svc, i) => {
-        const isSelected = selected.some(s => s.id === svc.id)
-        return (
-          <button
-            key={svc.id}
-            onClick={() => onToggle(svc)}
-            style={{ animationDelay: `${i * 40}ms` }}
-            className={`card p-4 text-left transition-all hover:border-brand-red/40 hover:scale-[1.01] active:scale-[0.99] animate-fade-in-up ${
-              isSelected ? 'border-brand-red bg-brand-red/5' : ''
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 mr-3">
-                <p className="font-semibold text-[rgb(var(--fg))] truncate">{svc.name}</p>
-                <p className="text-sm text-[rgb(var(--fg-secondary))] mt-0.5 flex items-center gap-1">
-                  <Clock size={12} /> {svc.duration_minutes} min
-                </p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <span className="font-bold text-[rgb(var(--fg))]">{formatPrice(svc.price)}</span>
-                <div
-                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                    isSelected
-                      ? 'bg-brand-red border-brand-red'
-                      : 'border-[rgb(var(--fg-secondary))]/30'
-                  }`}
-                >
-                  {isSelected && <Check size={11} className="text-white" />}
+      <div ref={listRef} className="flex flex-col gap-3">
+        {services.map(svc => {
+          const isSelected = selected.some(s => s.id === svc.id)
+          return (
+            <button
+              key={svc.id}
+              data-reveal-item
+              onClick={() => onToggle(svc)}
+              className={`card p-4 text-left transition-all hover:border-brand-red/40 hover:scale-[1.01] active:scale-[0.99] ${
+                isSelected ? 'border-brand-red bg-brand-red/5' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="min-w-0 mr-3">
+                  <p className="font-semibold text-[rgb(var(--fg))] truncate">{svc.name}</p>
+                  <p className="text-sm text-[rgb(var(--fg-secondary))] mt-0.5 flex items-center gap-1">
+                    <Clock size={12} /> {svc.duration_minutes} min
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="font-bold text-[rgb(var(--fg))]">{formatPrice(svc.price)}</span>
+                  <div
+                    className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                      isSelected
+                        ? 'bg-brand-red border-brand-red'
+                        : 'border-[rgb(var(--fg-secondary))]/30'
+                    }`}
+                  >
+                    {isSelected && <Check size={11} className="text-white" />}
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
-        )
-      })}
+            </button>
+          )
+        })}
+      </div>
 
       {/* Chip: + Acompañante */}
       <button
@@ -236,14 +240,16 @@ function StepWorker({
   selected: Worker | null
   onSelect: (w: Worker) => void
 }) {
+  const listRef = useStaggerReveal<HTMLDivElement>('[data-reveal-item]', { watch: [workers.length] })
+
   return (
-    <div className="flex flex-col gap-3">
-      {workers.map((worker, i) => (
+    <div ref={listRef} className="flex flex-col gap-3">
+      {workers.map(worker => (
         <button
           key={worker.id}
+          data-reveal-item
           onClick={() => onSelect(worker)}
-          style={{ animationDelay: `${i * 40}ms` }}
-          className={`card p-4 text-left flex items-center gap-3 transition-all hover:border-brand-red/40 hover:scale-[1.01] active:scale-[0.99] animate-fade-in-up ${
+          className={`card p-4 text-left flex items-center gap-3 transition-all hover:border-brand-red/40 hover:scale-[1.01] active:scale-[0.99] ${
             selected?.id === worker.id ? 'border-brand-red bg-brand-red/5' : ''
           }`}
         >
@@ -344,6 +350,7 @@ function StepDateTime({
   const isMulti = peopleCount > 1
   const remaining = peopleCount - selectedTimes.length
   const groups = groupSlots(slots)
+  const slotsRef = useReveal<HTMLDivElement>('fade-up', { watch: [loadedDay] })
 
   return (
     <div>
@@ -410,7 +417,7 @@ function StepDateTime({
           <Loader2 size={20} className="animate-spin text-brand-red mx-auto" />
         </div>
       ) : groups.length > 0 ? (
-        <div key={loadedDay} className="flex flex-col gap-5 animate-fade-in-up">
+        <div ref={slotsRef} className="flex flex-col gap-5">
           {groups.map(({ label, slots: gs }) => (
             <div key={label}>
               <p className="text-[10px] font-semibold text-[rgb(var(--fg-secondary))] uppercase tracking-wider mb-2">
@@ -664,6 +671,8 @@ function StepConfirm({
 // ── Modal: aviso WhatsApp en camino ──────────────────────────────────────────
 function WhatsAppPendingModal({ onClose }: { onClose: () => void }) {
   const [secs, setSecs] = useState(8)
+  const backdropRef = useReveal<HTMLDivElement>('fade')
+  const panelRef = useReveal<HTMLDivElement>('scale')
 
   useEffect(() => {
     if (secs === 0) return
@@ -672,8 +681,8 @@ function WhatsAppPendingModal({ onClose }: { onClose: () => void }) {
   }, [secs])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-5 animate-fade-in">
-      <div className="bg-[rgb(var(--bg))] rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-4 animate-scale-in">
+    <div ref={backdropRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-5">
+      <div ref={panelRef} className="bg-[rgb(var(--bg))] rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-4">
         <div className="w-14 h-14 rounded-full bg-[#25D366]/10 flex items-center justify-center">
           <Phone size={26} className="text-[#25D366]" />
         </div>
@@ -704,9 +713,22 @@ function WhatsAppPendingModal({ onClose }: { onClose: () => void }) {
 
 // ── Pantalla de éxito ─────────────────────────────────────────────────────────
 function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }: any) {
-  const [showWhatsAppModal, setShowWhatsAppModal] = useState(true)
+  // El modal se retrasa para que primero se alcance a ver la animación
+  // del check (dibujo + rebote) antes de que tape la pantalla.
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
   const [secs, setSecs] = useState(30 * 60)
   const [copied, setCopied] = useState<string | null>(null)
+
+  const titleRef = useReveal<HTMLDivElement>('fade-up', { delay: 700 })
+  const counterRef = useReveal<HTMLDivElement>('fade-up', { delay: 790 })
+  const summaryRef = useReveal<HTMLDivElement>('fade-up', { delay: 880 })
+  const transferRef = useReveal<HTMLDivElement>('fade-up', { delay: 970 })
+  const actionsRef = useReveal<HTMLDivElement>('fade-up', { delay: 1060 })
+
+  useEffect(() => {
+    const t = setTimeout(() => setShowWhatsAppModal(true), 1400)
+    return () => clearTimeout(t)
+  }, [])
 
   useEffect(() => {
     const t = setInterval(() => setSecs(s => Math.max(0, s - 1)), 1000)
@@ -787,16 +809,18 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
       )}
 
       {/* Ícono éxito */}
-      <div className="text-center mb-6 animate-fade-in-up">
+      <div className="text-center mb-6">
         <SuccessCheck />
-        <h2 className="text-xl font-bold text-[rgb(var(--fg))]">¡Hora agendada!</h2>
-        <p className="text-[rgb(var(--fg-secondary))] text-sm mt-1">
-          Envía el comprobante para confirmar
-        </p>
+        <div ref={titleRef}>
+          <h2 className="text-xl font-bold text-[rgb(var(--fg))]">¡Hora agendada!</h2>
+          <p className="text-[rgb(var(--fg-secondary))] text-sm mt-1">
+            Envía el comprobante para confirmar
+          </p>
+        </div>
       </div>
 
       {/* Contador regresivo con barra */}
-      <div className="text-center mb-5 animate-fade-in-up" style={{ animationDelay: '80ms' }}>
+      <div ref={counterRef} className="text-center mb-5">
         <p className="text-3xl font-bold tabular-nums text-[rgb(var(--fg))]">{mm}:{ss}</p>
         <div className="h-[3px] bg-[rgb(var(--bg-secondary))] rounded-full overflow-hidden mt-2 mb-1.5">
           <div
@@ -810,7 +834,7 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
       </div>
 
       {/* Resumen reserva */}
-      <div className="card p-4 mb-4 animate-fade-in-up" style={{ animationDelay: '140ms' }}>
+      <div ref={summaryRef} className="card p-4 mb-4">
         <div className="flex flex-col gap-2 text-sm">
           {people.map((p: Person, idx: number) => {
             const personTotal = p.services.reduce((s, svc) => s + svc.price, 0)
@@ -842,7 +866,7 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
 
       {/* Datos de transferencia con copia por campo y copia total */}
       {transferLines.length > 0 && (
-        <div className="card p-4 mb-4 animate-fade-in-up" style={{ animationDelay: '200ms' }}>
+        <div ref={transferRef} className="card p-4 mb-4">
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs font-semibold text-[rgb(var(--fg-secondary))] uppercase tracking-wide">
               Datos de transferencia
@@ -889,7 +913,7 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
       )}
 
       {/* Acciones */}
-      <div className="flex flex-col gap-2 mb-4 animate-fade-in-up" style={{ animationDelay: '260ms' }}>
+      <div ref={actionsRef} className="flex flex-col gap-2 mb-4">
         {phoneClean ? (
           <>
             <p className="text-xs text-center text-[rgb(var(--fg-secondary))]">
@@ -954,6 +978,8 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
   const [selectedTimes, setSelectedTimes] = useState<string[]>([])
   const [successData, setSuccessData] = useState<{ id: string; cancelToken: string } | null>(null)
 
+  const stepRef = useReveal<HTMLDivElement>('fade-up', { watch: [step] })
+
   const peopleCount = people.length
 
   const maxDuration = Math.max(
@@ -991,6 +1017,9 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
   const totalPrice = people.reduce((sum, p) => sum + p.services.reduce((s, svc) => s + svc.price, 0), 0)
   const totalDuration = people.reduce((sum, p) => sum + p.services.reduce((s, svc) => s + svc.duration_minutes, 0), 0)
   const totalServices = people.reduce((sum, p) => sum + p.services.length, 0)
+
+  const bar0Ref = useReveal<HTMLDivElement>('slide-up', { watch: [step === 0 && totalServices > 0] })
+  const bar2Ref = useReveal<HTMLDivElement>('slide-up', { watch: [step === 2 && timesComplete] })
 
   const LABELS = singleWorker
     ? ['Servicios', 'Horario', 'Datos']
@@ -1147,7 +1176,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
               </div>
             )}
 
-            <div key={step} className="animate-fade-in-up">
+            <div ref={stepRef}>
               {/* Step 0: servicios */}
               {step === 0 && (
                 <StepService
@@ -1215,7 +1244,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
 
           {/* Barra inferior fija — servicios */}
           {step === 0 && totalServices > 0 && (
-            <div className="fixed bottom-0 left-0 right-0 z-20 bg-[rgb(var(--bg))] border-t border-[rgb(var(--fg-secondary))]/20 animate-slide-up">
+            <div ref={bar0Ref} className="fixed bottom-0 left-0 right-0 z-20 bg-[rgb(var(--bg))] border-t border-[rgb(var(--fg-secondary))]/20">
               <div className="max-w-lg md:max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
                 <div>
                   <p className="font-bold text-[rgb(var(--fg))]">{formatPrice(totalPrice)}</p>
@@ -1236,7 +1265,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
 
           {/* Barra inferior fija — horario (cuando seleccionó todos los horarios) */}
           {step === 2 && timesComplete && (
-            <div className="fixed bottom-0 left-0 right-0 z-20 bg-[rgb(var(--bg))] border-t border-[rgb(var(--fg-secondary))]/20 animate-slide-up">
+            <div ref={bar2Ref} className="fixed bottom-0 left-0 right-0 z-20 bg-[rgb(var(--bg))] border-t border-[rgb(var(--fg-secondary))]/20">
               <div className="max-w-lg md:max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
                 <div>
                   <p className="font-bold text-sm text-[rgb(var(--fg))]">
