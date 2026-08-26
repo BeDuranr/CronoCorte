@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
 import { SuccessCheck } from './success-check'
 import { useReveal, useStaggerReveal } from './use-reveal'
+import { FaWhatsapp } from 'react-icons/fa6'
 import {
   ChevronLeft, Clock, Check, Loader2,
   Instagram, MapPin, Scissors, Phone, Plus, Copy, Calendar,
@@ -745,7 +746,7 @@ function StepConfirm({
 
 // ── Modal: aviso WhatsApp en camino ──────────────────────────────────────────
 function WhatsAppPendingModal({ onClose }: { onClose: () => void }) {
-  const [secs, setSecs] = useState(8)
+  const [secs, setSecs] = useState(10)
   const backdropRef = useReveal<HTMLDivElement>('fade')
   const panelRef = useReveal<HTMLDivElement>('scale')
 
@@ -759,7 +760,7 @@ function WhatsAppPendingModal({ onClose }: { onClose: () => void }) {
     <div ref={backdropRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-5">
       <div ref={panelRef} className="bg-[rgb(var(--bg))] rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-4">
         <div className="w-14 h-14 rounded-full bg-[#25D366]/10 flex items-center justify-center">
-          <Phone size={26} className="text-[#25D366]" />
+          <FaWhatsapp size={28} className="text-[#25D366]" />
         </div>
         <div>
           <h3 className="text-lg font-bold text-[rgb(var(--fg))] mb-2">
