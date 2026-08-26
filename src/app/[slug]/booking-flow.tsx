@@ -177,13 +177,14 @@ function StepService({
       )}
 
       {/* Servicio cards */}
-      {services.map(svc => {
+      {services.map((svc, i) => {
         const isSelected = selected.some(s => s.id === svc.id)
         return (
           <button
             key={svc.id}
             onClick={() => onToggle(svc)}
-            className={`card p-4 text-left transition-all hover:border-brand-red/40 ${
+            style={{ animationDelay: `${i * 40}ms` }}
+            className={`card p-4 text-left transition-all hover:border-brand-red/40 hover:scale-[1.01] active:scale-[0.99] animate-fade-in-up ${
               isSelected ? 'border-brand-red bg-brand-red/5' : ''
             }`}
           >
@@ -236,11 +237,12 @@ function StepWorker({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      {workers.map(worker => (
+      {workers.map((worker, i) => (
         <button
           key={worker.id}
           onClick={() => onSelect(worker)}
-          className={`card p-4 text-left flex items-center gap-3 transition-all hover:border-brand-red/40 ${
+          style={{ animationDelay: `${i * 40}ms` }}
+          className={`card p-4 text-left flex items-center gap-3 transition-all hover:border-brand-red/40 hover:scale-[1.01] active:scale-[0.99] animate-fade-in-up ${
             selected?.id === worker.id ? 'border-brand-red bg-brand-red/5' : ''
           }`}
         >
@@ -407,7 +409,7 @@ function StepDateTime({
           <Loader2 size={20} className="animate-spin text-brand-red mx-auto" />
         </div>
       ) : groups.length > 0 ? (
-        <div className="flex flex-col gap-5">
+        <div key={loadedDay} className="flex flex-col gap-5 animate-fade-in-up">
           {groups.map(({ label, slots: gs }) => (
             <div key={label}>
               <p className="text-[10px] font-semibold text-[rgb(var(--fg-secondary))] uppercase tracking-wider mb-2">
@@ -423,7 +425,7 @@ function StepDateTime({
                       key={time}
                       onClick={() => onToggleTime(time)}
                       disabled={disabled}
-                      className={`py-2 px-1 rounded-lg text-sm font-medium border transition-all ${
+                      className={`py-2 px-1 rounded-lg text-sm font-medium border transition-all active:scale-95 ${
                         isPicked
                           ? 'bg-brand-red text-white border-brand-red'
                           : occupied
@@ -669,8 +671,8 @@ function WhatsAppPendingModal({ onClose }: { onClose: () => void }) {
   }, [secs])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-5">
-      <div className="bg-[rgb(var(--bg))] rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-5 animate-fade-in">
+      <div className="bg-[rgb(var(--bg))] rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-4 animate-scale-in">
         <div className="w-14 h-14 rounded-full bg-[#25D366]/10 flex items-center justify-center">
           <Phone size={26} className="text-[#25D366]" />
         </div>
@@ -784,8 +786,8 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
       )}
 
       {/* Ícono éxito */}
-      <div className="text-center mb-6">
-        <div className="w-14 h-14 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-3">
+      <div className="text-center mb-6 animate-fade-in-up">
+        <div className="w-14 h-14 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-3 animate-scale-in">
           <Check size={24} className="text-green-500" strokeWidth={2.5} />
         </div>
         <h2 className="text-xl font-bold text-[rgb(var(--fg))]">¡Hora agendada!</h2>
@@ -795,7 +797,7 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
       </div>
 
       {/* Contador regresivo con barra */}
-      <div className="text-center mb-5">
+      <div className="text-center mb-5 animate-fade-in-up" style={{ animationDelay: '80ms' }}>
         <p className="text-3xl font-bold tabular-nums text-[rgb(var(--fg))]">{mm}:{ss}</p>
         <div className="h-[3px] bg-[rgb(var(--bg-secondary))] rounded-full overflow-hidden mt-2 mb-1.5">
           <div
@@ -809,7 +811,7 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
       </div>
 
       {/* Resumen reserva */}
-      <div className="card p-4 mb-4">
+      <div className="card p-4 mb-4 animate-fade-in-up" style={{ animationDelay: '140ms' }}>
         <div className="flex flex-col gap-2 text-sm">
           {people.map((p: Person, idx: number) => {
             const personTotal = p.services.reduce((s, svc) => s + svc.price, 0)
@@ -841,7 +843,7 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
 
       {/* Datos de transferencia con copia por campo y copia total */}
       {transferLines.length > 0 && (
-        <div className="card p-4 mb-4">
+        <div className="card p-4 mb-4 animate-fade-in-up" style={{ animationDelay: '200ms' }}>
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs font-semibold text-[rgb(var(--fg-secondary))] uppercase tracking-wide">
               Datos de transferencia
@@ -888,7 +890,7 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
       )}
 
       {/* Acciones */}
-      <div className="flex flex-col gap-2 mb-4">
+      <div className="flex flex-col gap-2 mb-4 animate-fade-in-up" style={{ animationDelay: '260ms' }}>
         {phoneClean ? (
           <>
             <p className="text-xs text-center text-[rgb(var(--fg-secondary))]">
@@ -1146,58 +1148,60 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
               </div>
             )}
 
-            {/* Step 0: servicios */}
-            {step === 0 && (
-              <StepService
-                services={services}
-                people={people}
-                activePerson={activePerson}
-                onToggle={toggleService}
-                onSetActivePerson={setActivePerson}
-                onAddPerson={addPerson}
-                onRemovePerson={removePerson}
-              />
-            )}
+            <div key={step} className="animate-fade-in-up">
+              {/* Step 0: servicios */}
+              {step === 0 && (
+                <StepService
+                  services={services}
+                  people={people}
+                  activePerson={activePerson}
+                  onToggle={toggleService}
+                  onSetActivePerson={setActivePerson}
+                  onAddPerson={addPerson}
+                  onRemovePerson={removePerson}
+                />
+              )}
 
-            {/* Step 1: barbero */}
-            {step === 1 && (
-              <StepWorker
-                workers={workers}
-                selected={selectedWorker}
-                onSelect={wk => {
-                  setSelectedWorker(wk)
-                  setSelectedTimes([])
-                  goNext()
-                }}
-              />
-            )}
+              {/* Step 1: barbero */}
+              {step === 1 && (
+                <StepWorker
+                  workers={workers}
+                  selected={selectedWorker}
+                  onSelect={wk => {
+                    setSelectedWorker(wk)
+                    setSelectedTimes([])
+                    goNext()
+                  }}
+                />
+              )}
 
-            {/* Step 2: horario */}
-            {step === 2 && selectedWorker && (
-              <StepDateTime
-                selectedDate={selectedDate}
-                selectedTimes={selectedTimes}
-                onDateChange={setSelectedDate}
-                onToggleTime={toggleTime}
-                availability={availability}
-                workerId={selectedWorker.id}
-                serviceDuration={maxDuration}
-                slotIntervalMinutes={(barbershop as any).slot_interval_minutes ?? 60}
-                peopleCount={peopleCount}
-              />
-            )}
+              {/* Step 2: horario */}
+              {step === 2 && selectedWorker && (
+                <StepDateTime
+                  selectedDate={selectedDate}
+                  selectedTimes={selectedTimes}
+                  onDateChange={setSelectedDate}
+                  onToggleTime={toggleTime}
+                  availability={availability}
+                  workerId={selectedWorker.id}
+                  serviceDuration={maxDuration}
+                  slotIntervalMinutes={(barbershop as any).slot_interval_minutes ?? 60}
+                  peopleCount={peopleCount}
+                />
+              )}
 
-            {/* Step 3: confirmar */}
-            {step === 3 && selectedWorker && timesComplete && (
-              <StepConfirm
-                barbershop={barbershop}
-                people={people}
-                worker={selectedWorker}
-                date={selectedDate}
-                times={selectedTimes}
-                onSuccess={(id, cancelToken) => setSuccessData({ id, cancelToken })}
-              />
-            )}
+              {/* Step 3: confirmar */}
+              {step === 3 && selectedWorker && timesComplete && (
+                <StepConfirm
+                  barbershop={barbershop}
+                  people={people}
+                  worker={selectedWorker}
+                  date={selectedDate}
+                  times={selectedTimes}
+                  onSuccess={(id, cancelToken) => setSuccessData({ id, cancelToken })}
+                />
+              )}
+            </div>
 
             {/* Volver (steps 1 y 2; step 1 auto-avanza al seleccionar barbero) */}
             {(step === 2 || step === 3) && (
@@ -1212,7 +1216,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
 
           {/* Barra inferior fija — servicios */}
           {step === 0 && totalServices > 0 && (
-            <div className="fixed bottom-0 left-0 right-0 z-20 bg-[rgb(var(--bg))] border-t border-[rgb(var(--fg-secondary))]/20">
+            <div className="fixed bottom-0 left-0 right-0 z-20 bg-[rgb(var(--bg))] border-t border-[rgb(var(--fg-secondary))]/20 animate-slide-up">
               <div className="max-w-lg md:max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
                 <div>
                   <p className="font-bold text-[rgb(var(--fg))]">{formatPrice(totalPrice)}</p>
@@ -1233,7 +1237,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
 
           {/* Barra inferior fija — horario (cuando seleccionó todos los horarios) */}
           {step === 2 && timesComplete && (
-            <div className="fixed bottom-0 left-0 right-0 z-20 bg-[rgb(var(--bg))] border-t border-[rgb(var(--fg-secondary))]/20">
+            <div className="fixed bottom-0 left-0 right-0 z-20 bg-[rgb(var(--bg))] border-t border-[rgb(var(--fg-secondary))]/20 animate-slide-up">
               <div className="max-w-lg md:max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
                 <div>
                   <p className="font-bold text-sm text-[rgb(var(--fg))]">
