@@ -6,6 +6,7 @@ import { es } from 'date-fns/locale'
 import { calculateSlotsWithStatus, formatPrice, type SlotStatus } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
+import { SuccessCheck } from './success-check'
 import {
   ChevronLeft, Clock, Check, Loader2,
   Instagram, MapPin, Scissors, Phone, Plus, Copy, Calendar,
@@ -787,9 +788,7 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
 
       {/* Ícono éxito */}
       <div className="text-center mb-6 animate-fade-in-up">
-        <div className="w-14 h-14 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-3 animate-scale-in">
-          <Check size={24} className="text-green-500" strokeWidth={2.5} />
-        </div>
+        <SuccessCheck />
         <h2 className="text-xl font-bold text-[rgb(var(--fg))]">¡Hora agendada!</h2>
         <p className="text-[rgb(var(--fg-secondary))] text-sm mt-1">
           Envía el comprobante para confirmar
