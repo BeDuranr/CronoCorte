@@ -306,6 +306,50 @@ function StepWorker({
   )
 }
 
+// ── Skeleton: horarios cargando ────────────────────────────────────────────────
+function SlotsSkeleton() {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    let anim: { pause: () => void } | undefined
+
+    import('animejs').then(({ animate, stagger }) => {
+      if (cancelled || !ref.current) return
+      const items = ref.current.querySelectorAll<HTMLElement>('[data-skeleton-item]')
+      anim = animate(items, {
+        opacity: [0.35, 1],
+        duration: 700,
+        loop: true,
+        alternate: true,
+        ease: 'inOutSine',
+        delay: stagger(45),
+      })
+    })
+
+    return () => { cancelled = true; anim?.pause() }
+  }, [])
+
+  return (
+    <div ref={ref} className="flex flex-col gap-5">
+      {[8, 6].map((count, g) => (
+        <div key={g}>
+          <div className="h-[10px] w-14 rounded bg-[rgb(var(--fg-secondary))]/15 mb-2" />
+          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+            {Array.from({ length: count }).map((_, i) => (
+              <div
+                key={i}
+                data-skeleton-item
+                className="h-9 rounded-lg bg-[rgb(var(--fg-secondary))]/10"
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Step: fecha y horario ─────────────────────────────────────────────────────
 function StepDateTime({
   selectedDate,
@@ -446,9 +490,7 @@ function StepDateTime({
 
       {/* Slots agrupados por franja */}
       {loadingSlots ? (
-        <div className="text-center py-6">
-          <Loader2 size={20} className="animate-spin text-brand-red mx-auto" />
-        </div>
+        <SlotsSkeleton />
       ) : groups.length > 0 ? (
         <div ref={slotsRef} className="flex flex-col gap-5">
           {groups.map(({ label, slots: gs }) => (
