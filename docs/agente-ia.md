@@ -5,7 +5,7 @@ Groq-powered barbershop assistant, widget shown on the public booking page.
 ## Architecture
 
 - Text messages → `llama-3.3-70b-versatile`
-- Image messages → `meta-llama/llama-4-scout-17b-16e-instruct`
+- Image messages → `qwen/qwen3.8-27b`
 - The agent widget is **per-barbershop** and activated via the `agent_enabled` toggle in Configuración. When enabled, it shows a hair/face recommendation chat widget on the public booking page (`/[slug]`).
 - The agent **only handles image/text via `/api/agent/chat`**, called directly from the widget in the browser — there's no server-side WhatsApp integration for it.
 - Rate limited to 20 req/min per IP using an in-memory Map (sufficient for single-instance dev; Vercel multi-instance is acceptable since it just throttles abuse).

@@ -23,7 +23,7 @@ function checkRateLimit(ip: string): boolean {
   return true
 }
 
-const VISION_MODEL = 'qwen/qwen3.6-27b'
+const VISION_MODEL = 'qwen/qwen3.8-27b'
 // llama-3.3-70b-versatile fue retirado de Groq (model_not_found); modelo
 // distinto al de visión a propósito, para no competir por el mismo cupo
 // diario con la validación de comprobantes de pago.

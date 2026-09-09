@@ -5,7 +5,7 @@
 Payment is confirmed via WhatsApp:
 1. Client sends transfer receipt image to the barbershop's WhatsApp number.
 2. Twilio webhook (`/api/whatsapp/webhook`) receives the message.
-3. The receipt image is fetched with Twilio credentials and sent to Groq vision model (`meta-llama/llama-4-scout-17b-16e-instruct`) which returns `{amount, date, is_valid_receipt, confidence}`.
+3. The receipt image is fetched with Twilio credentials and sent to Groq vision model (`qwen/qwen3.8-27b`) which returns `{amount, date, is_valid_receipt, confidence}`.
 4. Verification passes if: `is_valid_receipt=true`, confidence ≥ 0.7, amount within ±5% of expected, and date is today or yesterday (Chile timezone).
 5. On success, appointment status is updated to `confirmed` and reminders are activated.
 

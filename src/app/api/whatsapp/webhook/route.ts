@@ -5,7 +5,7 @@ import Groq from 'groq-sdk'
 import crypto from 'crypto'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
-const VISION_MODEL = 'qwen/qwen3.6-27b'
+const VISION_MODEL = 'qwen/qwen3.8-27b'
 
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID!
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN!
