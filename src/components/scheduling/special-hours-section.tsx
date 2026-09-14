@@ -178,10 +178,15 @@ export function SpecialHoursSection({ barbershopId }: { barbershopId: string }) 
             <label className="label">Fecha</label>
             <input
               type="date"
-              className="input text-sm py-1 px-2"
+              className="input text-sm py-1 px-2 cursor-pointer"
               min={todayStr}
               value={date}
               onChange={e => setDate(e.target.value)}
+              // En escritorio el calendario nativo solo se abre con el ícono;
+              // lo abrimos al hacer clic en cualquier parte del campo.
+              onClick={e => {
+                try { e.currentTarget.showPicker?.() } catch {}
+              }}
             />
           </div>
           <div className="flex-1">
