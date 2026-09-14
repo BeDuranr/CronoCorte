@@ -5,6 +5,7 @@ import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { DatePicker } from '@/components/scheduling/date-picker'
 import { isWithinOpeningHours, toChileWall, type DateOverride } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { AlertTriangle, CalendarClock, Loader2, Plus, Trash2 } from 'lucide-react'
@@ -176,17 +177,11 @@ export function SpecialHoursSection({ barbershopId }: { barbershopId: string }) 
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex-1">
             <label className="label">Fecha</label>
-            <input
-              type="date"
-              className="input text-sm py-1 px-2 cursor-pointer"
-              min={todayStr}
+            <DatePicker
               value={date}
-              onChange={e => setDate(e.target.value)}
-              // En escritorio el calendario nativo solo se abre con el ícono;
-              // lo abrimos al hacer clic en cualquier parte del campo.
-              onClick={e => {
-                try { e.currentTarget.showPicker?.() } catch {}
-              }}
+              onChange={setDate}
+              min={todayStr}
+              markedDates={overrides.map(o => o.date)}
             />
           </div>
           <div className="flex-1">
