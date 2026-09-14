@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import {
   addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameMonth,
   parseISO, startOfMonth, startOfWeek,
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useDismiss } from '@/components/scheduling/use-dismiss'
 
 const WEEKDAYS = ['lu', 'ma', 'mi', 'ju', 'vi', 'sá', 'do']
 
@@ -26,20 +27,8 @@ export function DatePicker({ value, onChange, min, markedDates = [], placeholder
   const [month, setMonth] = useState(() => startOfMonth(parseISO(value || min || format(new Date(), 'yyyy-MM-dd'))))
   const rootRef = useRef<HTMLDivElement>(null)
 
-  // Cerrar al hacer clic afuera o con Escape
-  useEffect(() => {
-    if (!open) return
-    const onPointerDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
-    }
-    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('pointerdown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open])
+  const close = useCallback(() => setOpen(false), [])
+  useDismiss(rootRef, open, close)
 
   const toggle = () => {
     // Al abrir, mostrar el mes de la fecha elegida (o el mínimo)

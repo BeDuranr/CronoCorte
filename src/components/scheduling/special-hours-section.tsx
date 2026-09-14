@@ -6,6 +6,7 @@ import { es } from 'date-fns/locale'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { DatePicker } from '@/components/scheduling/date-picker'
+import { TimePicker } from '@/components/scheduling/time-picker'
 import { isWithinOpeningHours, toChileWall, type DateOverride } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { AlertTriangle, CalendarClock, Loader2, Plus, Trash2 } from 'lucide-react'
@@ -217,19 +218,9 @@ export function SpecialHoursSection({ barbershopId }: { barbershopId: string }) 
 
         {!isClosed && (
           <div className="flex items-center gap-2">
-            <input
-              type="time"
-              className="input text-sm py-1 px-2 flex-1"
-              value={startTime}
-              onChange={e => setStartTime(e.target.value)}
-            />
+            <TimePicker value={startTime} onChange={setStartTime} className="flex-1" />
             <span className="text-[10px] text-[rgb(var(--fg-secondary))] shrink-0">a</span>
-            <input
-              type="time"
-              className="input text-sm py-1 px-2 flex-1"
-              value={endTime}
-              onChange={e => setEndTime(e.target.value)}
-            />
+            <TimePicker value={endTime} onChange={setEndTime} after={startTime} align="right" className="flex-1" />
           </div>
         )}
 

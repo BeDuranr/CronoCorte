@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Navbar } from '@/components/layout/navbar'
 import { SpecialHoursSection } from '@/components/scheduling/special-hours-section'
+import { TimePicker } from '@/components/scheduling/time-picker'
 import { DAYS, accentColorVars, formatPrice } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { Loader2, Bot, Calendar, Store, Save, CreditCard, Bell, Scissors, Upload, X } from 'lucide-react'
@@ -683,18 +684,18 @@ export default function ConfiguracionPage() {
                   </div>
                   {row.enabled && (
                     <div className="flex items-center gap-2 mt-2 ml-[52px]">
-                      <input
-                        type="time"
-                        className="input text-sm py-1 px-2 flex-1"
+                      <TimePicker
                         value={row.start_time}
-                        onChange={e => updateSchedule(day.index, 'start_time', e.target.value)}
+                        onChange={v => updateSchedule(day.index, 'start_time', v)}
+                        className="flex-1"
                       />
                       <span className="text-[10px] text-[rgb(var(--fg-secondary))] shrink-0">a</span>
-                      <input
-                        type="time"
-                        className="input text-sm py-1 px-2 flex-1"
+                      <TimePicker
                         value={row.end_time}
-                        onChange={e => updateSchedule(day.index, 'end_time', e.target.value)}
+                        onChange={v => updateSchedule(day.index, 'end_time', v)}
+                        after={row.start_time}
+                        align="right"
+                        className="flex-1"
                       />
                     </div>
                   )}
