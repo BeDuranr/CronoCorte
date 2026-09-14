@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { format, parseISO, addDays, startOfWeek, differenceInMinutes } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { formatPrice } from '@/lib/utils'
+import { formatPrice, type DateOverride } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
 import {
@@ -41,6 +41,7 @@ interface Props {
   todayAppointments: any[]
   todayBlockedSlots: BlockedSlot[]
   availability: AvailabilityRow[]
+  overrides: DateOverride[]
   weekStats: { total: number; completed: number; revenue: number }
 }
 
@@ -277,7 +278,7 @@ function buildTimeline(appts: any[], blocks: BlockedSlot[]): TimelineItem[] {
 }
 
 // ── Vista principal ──────────────────────────────────────────────────────────
-export function AgendaView({ worker, todayAppointments, todayBlockedSlots, availability, weekStats }: Props) {
+export function AgendaView({ worker, todayAppointments, todayBlockedSlots, availability, overrides, weekStats }: Props) {
   const supabase = createClient()
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [appointments, setAppointments] = useState(todayAppointments)
@@ -363,6 +364,7 @@ export function AgendaView({ worker, todayAppointments, todayBlockedSlots, avail
       <BlockTimeModal
         workerId={worker.id}
         availability={availability}
+        overrides={overrides}
         initialDate={format(selectedDate, 'yyyy-MM-dd')}
         onCreated={addBlocked}
         onClose={() => setShowBlockModal(false)}

@@ -281,6 +281,63 @@ export function calculateFreeStretches({
     .map(({ start, end }) => ({ start: minutesToHHMM(start), end: minutesToHHMM(end) }))
 }
 
+// ── Horario efectivo de una fecha (semanal + horarios especiales) ──────────
+// Regla única de "¿qué horario tiene la barbería este día?", compartida por la
+// página de reservas, los modales del admin/barbero y la validación del
+// servidor. Un horario especial (schedule_overrides) para la fecha manda sobre
+// el horario semanal (availability); si no hay, se usa el del día de la semana.
+export interface WeeklyAvailability { day_of_week: number; start_time: string; end_time: string }
+export interface DateOverride {
+  date: string // 'yyyy-MM-dd'
+  is_closed: boolean
+  start_time: string | null
+  end_time: string | null
+  label?: string | null
+}
+
+export function getDayAvailability(
+  date: string, // 'yyyy-MM-dd' (fecha de pared en Chile)
+  availability: WeeklyAvailability[],
+  overrides: DateOverride[] = []
+): { start_time: string; end_time: string } | null {
+  const override = overrides.find(o => o.date === date)
+  if (override) {
+    if (override.is_closed || !override.start_time || !override.end_time) return null
+    return { start_time: override.start_time, end_time: override.end_time }
+  }
+  // Día de la semana calculado sobre la fecha "de pared" (evita desfase UTC)
+  const [yy, mm, dd] = date.split('-').map(Number)
+  const dow = new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay()
+  const weekly = availability.find(a => a.day_of_week === dow)
+  return weekly ? { start_time: weekly.start_time, end_time: weekly.end_time } : null
+}
+
+// Convierte un timestamp ISO a fecha y hora de pared en Chile.
+export function toChileWall(iso: string): { date: string; time: string } {
+  const wall = new Date(iso).toLocaleString('sv-SE', { timeZone: 'America/Santiago' })
+  return { date: wall.slice(0, 10), time: wall.slice(11, 16) }
+}
+
+// ¿El rango [startsAt, endsAt) cae completo dentro del horario de atención de
+// su día? Lo usa el servidor para rechazar reservas fuera de horario.
+export function isWithinOpeningHours(
+  startsAt: string,
+  endsAt: string,
+  availability: WeeklyAvailability[],
+  overrides: DateOverride[] = []
+): boolean {
+  const start = toChileWall(startsAt)
+  const end = toChileWall(endsAt)
+  if (start.date !== end.date) return false
+  const day = getDayAvailability(start.date, availability, overrides)
+  if (!day) return false
+  return (
+    hhmmToMinutes(start.time) >= hhmmToMinutes(day.start_time) &&
+    hhmmToMinutes(end.time) <= hhmmToMinutes(day.end_time) &&
+    hhmmToMinutes(end.time) > hhmmToMinutes(start.time)
+  )
+}
+
 // Días de la semana
 export const DAYS: { key: string; label: string; index: number }[] = [
   { key: 'sun', label: 'Domingo', index: 0 },

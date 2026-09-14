@@ -348,6 +348,47 @@ export type Database = {
           },
         ]
       }
+      schedule_overrides: {
+        Row: {
+          barbershop_id: string
+          created_at: string | null
+          date: string
+          end_time: string | null
+          id: string
+          is_closed: boolean
+          label: string | null
+          start_time: string | null
+        }
+        Insert: {
+          barbershop_id: string
+          created_at?: string | null
+          date: string
+          end_time?: string | null
+          id?: string
+          is_closed?: boolean
+          label?: string | null
+          start_time?: string | null
+        }
+        Update: {
+          barbershop_id?: string
+          created_at?: string | null
+          date?: string
+          end_time?: string | null
+          id?: string
+          is_closed?: boolean
+          label?: string | null
+          start_time?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_overrides_barbershop_id_fkey"
+            columns: ["barbershop_id"]
+            isOneToOne: false
+            referencedRelation: "barbershops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       services: {
         Row: {
           barbershop_id: string

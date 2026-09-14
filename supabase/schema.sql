@@ -130,6 +130,26 @@ CREATE TABLE availability (
 );
 
 -- ──────────────────────────────────────────────────────────
+-- schedule_overrides — horarios especiales por fecha (feriados, Navidad…)
+-- Reemplaza al horario semanal de availability solo en esa fecha.
+-- (migración 20260914_create_schedule_overrides.sql)
+-- ──────────────────────────────────────────────────────────
+CREATE TABLE schedule_overrides (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  barbershop_id UUID NOT NULL REFERENCES barbershops(id) ON DELETE CASCADE,
+  date          DATE NOT NULL,
+  is_closed     BOOLEAN NOT NULL DEFAULT FALSE,              -- TRUE = cerrado todo el día
+  start_time    TIME,
+  end_time      TIME,
+  label         TEXT,                                        -- ej: "Navidad"
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT schedule_overrides_one_per_date UNIQUE (barbershop_id, date),
+  CONSTRAINT schedule_overrides_times_valid CHECK (
+    is_closed OR (start_time IS NOT NULL AND end_time IS NOT NULL AND end_time > start_time)
+  )
+);
+
+-- ──────────────────────────────────────────────────────────
 -- blocked_slots — ausencias o bloqueos específicos por barbero
 -- ──────────────────────────────────────────────────────────
 CREATE TABLE blocked_slots (
@@ -258,6 +278,7 @@ ALTER TABLE workers          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE services         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE availability     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE blocked_slots    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE schedule_overrides ENABLE ROW LEVEL SECURITY;
 ALTER TABLE appointments     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portfolio_photos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles    ENABLE ROW LEVEL SECURITY;
@@ -316,6 +337,18 @@ CREATE POLICY "worker manages own availability" ON availability
     worker_id IN (SELECT id FROM workers WHERE user_id = auth.uid())
   );
 CREATE POLICY "public read availability" ON availability
+  FOR SELECT USING (TRUE);
+
+-- ── schedule_overrides: admin gestiona; público lee (igual que availability) ──
+CREATE POLICY "admin manages schedule overrides" ON schedule_overrides
+  FOR ALL TO authenticated
+  USING (
+    barbershop_id IN (SELECT id FROM barbershops WHERE admin_id = auth.uid())
+  )
+  WITH CHECK (
+    barbershop_id IN (SELECT id FROM barbershops WHERE admin_id = auth.uid())
+  );
+CREATE POLICY "public read schedule overrides" ON schedule_overrides
   FOR SELECT USING (TRUE);
 
 -- ── blocked_slots: admin y worker gestionan (mismo patrón que availability) ──

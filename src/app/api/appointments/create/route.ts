@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { isWithinOpeningHours, toChileWall } from '@/lib/utils'
 import crypto from 'crypto'
 
 // Un "bloque" representa a una persona dentro de la reserva.
@@ -92,6 +93,33 @@ export async function POST(req: NextRequest) {
 
     if (!dbWorker) {
       return NextResponse.json({ error: 'Barbero no disponible' }, { status: 400 })
+    }
+
+    // ── Validar que cada bloque caiga dentro del horario de atención ────
+    // Horario semanal + horarios especiales de la fecha (feriados, Navidad…).
+    // Sin esto, una llamada directa a la API podía reservar fuera de horario.
+    const blockDates = Array.from(new Set(normalizedBlocks.map(b => toChileWall(b.starts_at).date)))
+    const [{ data: weeklyAvailability }, { data: dateOverrides }] = await Promise.all([
+      supabase
+        .from('availability')
+        .select('day_of_week, start_time, end_time')
+        .eq('barbershop_id', barbershop_id)
+        .eq('is_active', true),
+      supabase
+        .from('schedule_overrides')
+        .select('date, is_closed, start_time, end_time')
+        .eq('barbershop_id', barbershop_id)
+        .in('date', blockDates),
+    ])
+
+    const outsideHours = normalizedBlocks.some(
+      b => !isWithinOpeningHours(b.starts_at, b.ends_at, weeklyAvailability ?? [], dateOverrides ?? [])
+    )
+    if (outsideHours) {
+      return NextResponse.json(
+        { error: 'El horario elegido está fuera del horario de atención. Por favor elige otro.' },
+        { status: 400 }
+      )
     }
 
     const priceMap = new Map(dbServices.map(s => [s.id, Number(s.price)]))

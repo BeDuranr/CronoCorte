@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { createClient } from '@/lib/supabase/client'
-import { calculateFreeStretches, enumerateGrid } from '@/lib/utils'
+import { calculateFreeStretches, enumerateGrid, getDayAvailability, type DateOverride } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { BanIcon, Loader2, X } from 'lucide-react'
 
@@ -25,6 +25,7 @@ interface BlockedSlot {
 interface Props {
   workerId: string
   availability: AvailabilityRow[]
+  overrides: DateOverride[]
   initialDate?: string // 'yyyy-MM-dd', por defecto hoy
   onCreated: (block: BlockedSlot) => void
   onClose: () => void
@@ -43,7 +44,7 @@ function buildTimestamp(dateStr: string, time: string) {
   return `${dateStr}T${time}:00${tz}`
 }
 
-export function BlockTimeModal({ workerId, availability, initialDate, onCreated, onClose }: Props) {
+export function BlockTimeModal({ workerId, availability, overrides, initialDate, onCreated, onClose }: Props) {
   const supabase = createClient()
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
   const [date, setDate] = useState(initialDate ?? todayStr)
@@ -54,16 +55,15 @@ export function BlockTimeModal({ workerId, availability, initialDate, onCreated,
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const openDows = useMemo(() => new Set(availability.map(a => a.day_of_week)), [availability])
-
-  // Próximas fechas que atiende la barbería (mismo criterio que el modal de cita manual)
+  // Próximas fechas que atiende la barbería, con horarios especiales incluidos
+  // (mismo criterio que el modal de cita manual)
   const availableDates = useMemo(() => {
     const [ty, tm, td] = todayStr.split('-').map(Number)
     const out: { value: string; weekday: string; day: string; month: string }[] = []
     for (let i = 0; i < 60 && out.length < 30; i++) {
       const d = new Date(ty, tm - 1, td + i)
-      if (!openDows.has(d.getDay())) continue
       const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      if (!getDayAvailability(value, availability, overrides)) continue
       out.push({
         value,
         weekday: format(d, 'EEE', { locale: es }),
@@ -72,7 +72,7 @@ export function BlockTimeModal({ workerId, availability, initialDate, onCreated,
       })
     }
     return out
-  }, [todayStr, openDows])
+  }, [todayStr, availability, overrides])
 
   useEffect(() => {
     if (availableDates.length === 0) return
@@ -100,11 +100,10 @@ export function BlockTimeModal({ workerId, availability, initialDate, onCreated,
     return () => { cancelled = true }
   }, [workerId, date])
 
-  const dayAvailability = useMemo(() => {
-    const [yy, mm, dd] = date.split('-').map(Number)
-    const dow = new Date(yy, mm - 1, dd).getDay()
-    return availability.find(a => a.day_of_week === dow) ?? null
-  }, [date, availability])
+  const dayAvailability = useMemo(
+    () => getDayAvailability(date, availability, overrides),
+    [date, availability, overrides]
+  )
 
   const stretches = useMemo(() => {
     if (!dayAvailability) return []

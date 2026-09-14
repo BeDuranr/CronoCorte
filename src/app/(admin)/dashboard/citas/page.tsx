@@ -71,6 +71,14 @@ export default async function CitasPage() {
     .eq('is_active', true)
     .order('day_of_week')
 
+  // Horarios especiales de hoy en adelante: mandan sobre el semanal en su fecha.
+  const todayChile = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
+  const { data: overrides } = await supabase
+    .from('schedule_overrides')
+    .select('date, is_closed, start_time, end_time, label')
+    .eq('barbershop_id', barbershop.id)
+    .gte('date', todayChile)
+
   const workerIds = (workers ?? []).map(w => w.id)
   const { data: blockedSlots } = workerIds.length
     ? await supabase
@@ -92,6 +100,7 @@ export default async function CitasPage() {
         workers={(workers as any[]) ?? []}
         services={(services as any[]) ?? []}
         availability={(availability as any[]) ?? []}
+        overrides={overrides ?? []}
         blockedSlots={(blockedSlots as any[]) ?? []}
       />
     </>
