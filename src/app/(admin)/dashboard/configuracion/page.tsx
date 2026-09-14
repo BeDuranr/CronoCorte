@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Navbar } from '@/components/layout/navbar'
+import { SpecialHoursSection } from '@/components/scheduling/special-hours-section'
 import { DAYS, accentColorVars, formatPrice } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { Loader2, Bot, Calendar, Store, Save, CreditCard, Bell, Scissors, Upload, X } from 'lucide-react'
@@ -704,6 +705,8 @@ export default function ConfiguracionPage() {
               {savingSchedule ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               Guardar horario
             </button>
+
+            <SpecialHoursSection barbershopId={shop.id} />
           </div>
         )}
 

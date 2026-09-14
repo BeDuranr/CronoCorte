@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { format, addDays, startOfDay, isBefore } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { calculateSlotsWithStatus, formatPrice, type SlotStatus } from '@/lib/utils'
+import { calculateSlotsWithStatus, formatPrice, getDayAvailability, type DateOverride, type SlotStatus } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
 import { SuccessCheck } from './success-check'
@@ -46,6 +46,7 @@ interface Props {
   services: Service[]
   workers: Worker[]
   availability: { day_of_week: number; start_time: string; end_time: string }[]
+  overrides: DateOverride[]
 }
 
 interface Person {
@@ -358,6 +359,7 @@ function StepDateTime({
   onDateChange,
   onToggleTime,
   availability,
+  overrides,
   workerId,
   serviceDuration,
   slotIntervalMinutes,
@@ -368,6 +370,7 @@ function StepDateTime({
   onDateChange: (d: Date) => void
   onToggleTime: (t: string) => void
   availability: Props['availability']
+  overrides: DateOverride[]
   workerId: string
   serviceDuration: number
   slotIntervalMinutes: number
@@ -381,7 +384,11 @@ function StepDateTime({
 
   const today = startOfDay(new Date())
   const visibleDays = Array.from({ length: 14 }, (_, i) => addDays(today, i + weekOffset * 14))
-  const availableDaysOfWeek = new Set(availability.map(a => a.day_of_week))
+  // Un día se puede reservar si tiene horario ese día: el especial de la fecha
+  // si existe, o si no el semanal.
+  const dayAvailability = (day: Date) =>
+    getDayAvailability(format(day, 'yyyy-MM-dd'), availability, overrides)
+  const selectedOverride = overrides.find(o => o.date === format(selectedDate, 'yyyy-MM-dd'))
 
   const loadSlots = async (date: Date) => {
     onDateChange(date)
@@ -397,8 +404,7 @@ function StepDateTime({
 
     setLoadingSlots(true)
     try {
-      const dow = date.getDay()
-      const avail = availability.find(a => a.day_of_week === dow)
+      const avail = dayAvailability(date)
       if (!avail) {
         slotsCache.current.set(cacheKey, [])
         setSlots([]); setLoadedDay(dateStr); return
@@ -454,7 +460,7 @@ function StepDateTime({
         </div>
         <div className="grid grid-cols-7 gap-1">
           {visibleDays.map((day, i) => {
-            const isAvail = availableDaysOfWeek.has(day.getDay())
+            const isAvail = dayAvailability(day) !== null
             const isSelected = format(day, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd')
             const isPast = isBefore(day, today)
             return (
@@ -479,6 +485,14 @@ function StepDateTime({
           })}
         </div>
       </div>
+
+      {/* Aviso de horario especial en la fecha elegida */}
+      {loadedDay && selectedOverride && !selectedOverride.is_closed && (
+        <div className="rounded-lg border border-brand-red/20 bg-brand-red/5 px-3 py-2 mb-3 text-xs text-[rgb(var(--fg-secondary))]">
+          Horario especial{selectedOverride.label ? ` (${selectedOverride.label})` : ''}:{' '}
+          {selectedOverride.start_time?.slice(0, 5)} a {selectedOverride.end_time?.slice(0, 5)}
+        </div>
+      )}
 
       {/* Aviso multi-persona */}
       {isMulti && (
@@ -1040,7 +1054,7 @@ function BookingSuccess({ people, worker, date, times, barbershop, cancelToken }
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
-export function BookingFlow({ barbershop, services, workers, availability }: Props) {
+export function BookingFlow({ barbershop, services, workers, availability, overrides }: Props) {
   const singleWorker = workers.length === 1
 
   // Steps: 0=servicios, 1=barbero (si múltiples), 2=horario, 3=confirmar
@@ -1287,6 +1301,7 @@ export function BookingFlow({ barbershop, services, workers, availability }: Pro
                   onDateChange={setSelectedDate}
                   onToggleTime={toggleTime}
                   availability={availability}
+                  overrides={overrides}
                   workerId={selectedWorker.id}
                   serviceDuration={maxDuration}
                   slotIntervalMinutes={(barbershop as any).slot_interval_minutes ?? 60}

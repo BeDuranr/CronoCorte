@@ -106,6 +106,13 @@ export default async function AgendaPage() {
     .eq('is_active', true)
     .order('day_of_week')
 
+  // Horarios especiales de hoy en adelante: mandan sobre el semanal en su fecha.
+  const { data: overrides } = await supabase
+    .from('schedule_overrides')
+    .select('date, is_closed, start_time, end_time, label')
+    .eq('barbershop_id', worker.barbershop_id)
+    .gte('date', todayStr)
+
   return (
     <>
       <Navbar role="worker" barbershopName={barbershop?.name} />
@@ -114,6 +121,7 @@ export default async function AgendaPage() {
         todayAppointments={(todayAppts as any[]) ?? []}
         todayBlockedSlots={(todayBlocked as any[]) ?? []}
         availability={(availability as any[]) ?? []}
+        overrides={overrides ?? []}
         weekStats={{
           total: weekAppts?.length ?? 0,
           completed: weekAppts?.filter(a => a.status === 'completed').length ?? 0,

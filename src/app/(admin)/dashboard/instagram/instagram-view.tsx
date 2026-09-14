@@ -5,7 +5,7 @@ import { format, addDays, startOfDay, isBefore } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { toPng } from 'html-to-image'
 import toast from 'react-hot-toast'
-import { calculateSlotsWithStatus, type SlotStatus } from '@/lib/utils'
+import { calculateSlotsWithStatus, getDayAvailability, type DateOverride, type SlotStatus } from '@/lib/utils'
 import { ChevronLeft, Download, Loader2, Moon, Sun, Scissors } from 'lucide-react'
 import Link from 'next/link'
 
@@ -29,6 +29,7 @@ interface Props {
   barbershop: Barbershop
   workers: { id: string; name: string }[]
   availability: AvailabilityRow[]
+  overrides: DateOverride[]
 }
 
 interface DayData {
@@ -183,16 +184,15 @@ function StoryCanvas({
   )
 }
 
-export function InstagramView({ barbershop, workers, availability }: Props) {
+export function InstagramView({ barbershop, workers, availability, overrides }: Props) {
   const [workerId, setWorkerId] = useState(workers[0]?.id ?? '')
   // Arranca en el primer día con disponibilidad activa (no necesariamente
   // hoy) para no aterrizar en un día sin horarios y con la descarga bloqueada.
   const [selectedDates, setSelectedDates] = useState<Date[]>(() => {
     const today = startOfDay(new Date())
-    const activeDays = new Set(availability.map(a => a.day_of_week))
     for (let i = 0; i < 14; i++) {
       const day = addDays(today, i)
-      if (activeDays.has(day.getDay())) return [day]
+      if (getDayAvailability(format(day, 'yyyy-MM-dd'), availability, overrides)) return [day]
     }
     return [today]
   })
@@ -207,7 +207,6 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
   const slotIntervalMinutes = barbershop.slot_interval_minutes ?? 60
   const today = startOfDay(new Date())
   const visibleDays = Array.from({ length: 14 }, (_, i) => addDays(today, i))
-  const availableDaysOfWeek = useMemo(() => new Set(availability.map(a => a.day_of_week)), [availability])
   const selectedDateStrs = useMemo(
     () => selectedDates.map(d => format(d, 'yyyy-MM-dd')).sort(),
     [selectedDates]
@@ -255,8 +254,7 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
       setLoadingSlots(true)
       try {
         const results = await Promise.all(selectedDateStrs.map(async (dateStr): Promise<DayData | null> => {
-          const dow = new Date(`${dateStr}T12:00:00`).getDay()
-          const avail = availability.find(a => a.day_of_week === dow)
+          const avail = getDayAvailability(dateStr, availability, overrides)
           if (!avail) return null
 
           let occupied: { starts_at: string; ends_at: string }[] = []
@@ -282,7 +280,7 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
     }
     load()
     return () => { cancelled = true }
-  }, [workerId, selectedDateStrs, availability, slotIntervalMinutes])
+  }, [workerId, selectedDateStrs, availability, overrides, slotIntervalMinutes])
 
   // El alto del story crece con la cantidad de días elegidos: medimos el
   // contenido real para que la vista previa y la descarga coincidan exacto.
@@ -415,7 +413,7 @@ export function InstagramView({ barbershop, workers, availability }: Props) {
             <p className="text-xs text-[rgb(var(--fg-secondary))] mb-2 -mt-1">Elige uno o varios</p>
             <div className="grid grid-cols-7 gap-1">
               {visibleDays.map((day, i) => {
-                const isAvail = availableDaysOfWeek.has(day.getDay())
+                const isAvail = getDayAvailability(format(day, 'yyyy-MM-dd'), availability, overrides) !== null
                 const isSelected = selectedDateStrs.includes(format(day, 'yyyy-MM-dd'))
                 const isPast = isBefore(day, today)
                 return (

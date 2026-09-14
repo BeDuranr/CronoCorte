@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { format, parseISO, isToday, isTomorrow, isYesterday } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { formatPrice, calculateAvailableSlots } from '@/lib/utils'
+import { formatPrice, calculateAvailableSlots, getDayAvailability, type DateOverride } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
@@ -42,6 +42,7 @@ interface Props {
   workers: { id: string; name: string }[]
   services: Service[]
   availability: AvailabilityRow[]
+  overrides: DateOverride[]
   blockedSlots: BlockedSlot[]
 }
 
@@ -199,6 +200,7 @@ function ManualAppointmentModal({
   workers,
   services,
   availability,
+  overrides,
   onClose,
   onCreated,
 }: {
@@ -207,6 +209,7 @@ function ManualAppointmentModal({
   workers: { id: string; name: string }[]
   services: Service[]
   availability: AvailabilityRow[]
+  overrides: DateOverride[]
   onClose: () => void
   onCreated: (appt: any) => void
 }) {
@@ -227,20 +230,15 @@ function ManualAppointmentModal({
   const worker = workers.find(w => w.id === workerId)
   const duration = service?.duration_minutes || 60
 
-  // Días de la semana (0–6) que atiende la barbería, según su availability.
-  const openDows = useMemo(
-    () => new Set(availability.map(a => a.day_of_week)),
-    [availability]
-  )
-
-  // Próximas fechas disponibles: días futuros cuyo day_of_week atiende la barbería.
+  // Próximas fechas disponibles: días futuros con horario de atención (el
+  // especial de la fecha si existe, o el semanal).
   const availableDates = useMemo(() => {
     const [ty, tm, td] = todayStr.split('-').map(Number)
     const out: { value: string; weekday: string; day: string; month: string }[] = []
     for (let i = 0; i < 60 && out.length < 30; i++) {
       const d = new Date(ty, tm - 1, td + i)
-      if (!openDows.has(d.getDay())) continue
       const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      if (!getDayAvailability(value, availability, overrides)) continue
       out.push({
         value,
         weekday: format(d, 'EEE', { locale: es }),
@@ -249,7 +247,7 @@ function ManualAppointmentModal({
       })
     }
     return out
-  }, [todayStr, openDows])
+  }, [todayStr, availability, overrides])
 
   // Si la fecha elegida ya no está disponible (cambió el barbero), salta a la primera.
   useEffect(() => {
@@ -266,10 +264,7 @@ function ManualAppointmentModal({
     const load = async () => {
       setLoadingSlots(true)
       try {
-        // day_of_week local de la fecha elegida (evita desfase UTC)
-        const [yy, mm, dd] = date.split('-').map(Number)
-        const dow = new Date(yy, mm - 1, dd).getDay()
-        const avail = availability.find(a => a.day_of_week === dow)
+        const avail = getDayAvailability(date, availability, overrides)
         if (!avail) { if (!cancelled) setSlots([]); return }
 
         let occupied: { starts_at: string; ends_at: string }[] = []
@@ -293,7 +288,7 @@ function ManualAppointmentModal({
     }
     load()
     return () => { cancelled = true }
-  }, [workerId, serviceId, date, duration, availability])
+  }, [workerId, serviceId, date, duration, availability, overrides])
 
   const handleSubmit = async () => {
     if (!clientName.trim()) return toast.error('El nombre del cliente es requerido')
@@ -515,7 +510,7 @@ function ManualAppointmentModal({
 }
 
 // ── Vista de citas ────────────────────────────────────────────────────────────
-export function CitasView({ barbershopId, slotIntervalMinutes, appointments: initial, workers, services, availability, blockedSlots: initialBlocked }: Props) {
+export function CitasView({ barbershopId, slotIntervalMinutes, appointments: initial, workers, services, availability, overrides, blockedSlots: initialBlocked }: Props) {
   const supabase = createClient()
   const router = useRouter()
   const [appointments, setAppointments] = useState<any[]>(initial)
@@ -740,6 +735,7 @@ export function CitasView({ barbershopId, slotIntervalMinutes, appointments: ini
           workers={workers}
           services={services}
           availability={availability}
+          overrides={overrides}
           onClose={closeManual}
           onCreated={addCreated}
         />
@@ -749,6 +745,7 @@ export function CitasView({ barbershopId, slotIntervalMinutes, appointments: ini
         <BlockTimeModal
           workerId={workers[0].id}
           availability={availability}
+          overrides={overrides}
           onCreated={addBlocked}
           onClose={() => setShowBlock(false)}
         />

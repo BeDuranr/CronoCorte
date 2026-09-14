@@ -17,6 +17,7 @@ export type Worker         = Database['public']['Tables']['workers']['Row']
 export type Service        = Database['public']['Tables']['services']['Row']
 export type Availability   = Database['public']['Tables']['availability']['Row']
 export type BlockedSlot    = Database['public']['Tables']['blocked_slots']['Row']
+export type ScheduleOverride = Database['public']['Tables']['schedule_overrides']['Row']
 export type PortfolioPhoto = Database['public']['Tables']['portfolio_photos']['Row']
 
 export type Appointment = Database['public']['Tables']['appointments']['Row'] & {

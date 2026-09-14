@@ -68,6 +68,15 @@ export default async function PublicBookingPage({ params }: Props) {
     .eq('is_active', true)
     .order('day_of_week')
 
+  // Horarios especiales de hoy en adelante (feriados, Navidad…): mandan sobre
+  // el horario semanal en su fecha.
+  const todayChile = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
+  const { data: overrides } = await supabase
+    .from('schedule_overrides')
+    .select('date, is_closed, start_time, end_time, label')
+    .eq('barbershop_id', barbershop.id)
+    .gte('date', todayChile)
+
   return (
     <>
       <style>{`:root { ${accentVars} }`}</style>
@@ -76,6 +85,7 @@ export default async function PublicBookingPage({ params }: Props) {
         services={(services as any[]) ?? []}
         workers={(workers as any[]) ?? []}
         availability={(availability as any[]) ?? []}
+        overrides={overrides ?? []}
       />
       {(barbershop as any).agent_enabled && (
         <ChatWidget

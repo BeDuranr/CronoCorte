@@ -43,6 +43,14 @@ export default async function InstagramStoryPage() {
     .eq('is_active', true)
     .order('day_of_week')
 
+  // Horarios especiales de hoy en adelante: mandan sobre el semanal en su fecha.
+  const todayChile = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' })
+  const { data: overrides } = await supabase
+    .from('schedule_overrides')
+    .select('date, is_closed, start_time, end_time, label')
+    .eq('barbershop_id', barbershop.id)
+    .gte('date', todayChile)
+
   return (
     <>
       <Navbar role="admin" barbershopName={barbershop.name} />
@@ -50,6 +58,7 @@ export default async function InstagramStoryPage() {
         barbershop={barbershop as any}
         workers={(workers as any[]) ?? []}
         availability={(availability as any[]) ?? []}
+        overrides={overrides ?? []}
       />
     </>
   )
