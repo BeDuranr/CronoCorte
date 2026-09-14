@@ -24,7 +24,12 @@
 
 ## 🟠 Bugs e inconsistencias
 
-Ninguno abierto por ahora.
+Riesgos abiertos, detectados al lanzar horarios especiales (2026-09-14, ver `docs/sesiones/2026-09-14.md`):
+
+| # | Riesgo | Estado |
+|---|--------|--------|
+| 1 | **Caché de la página pública**: `src/app/[slug]/page.tsx` tiene `revalidate = 300`. Un horario especial recién creado puede tardar hasta 5 min en verse al reservar; mientras tanto `/api/appointments/create` ya lo aplica, así que el cliente puede elegir una hora y recibir error al confirmar. Opción: revalidar la ruta (`revalidatePath`) al guardar o eliminar un horario especial. | 🟡 Pendiente |
+| 2 | **Timestamps con el offset del navegador**: `booking-flow.tsx` arma `starts_at`/`ends_at` con la zona del dispositivo, no con `America/Santiago`. Un cliente con el reloj en otra zona manda horas corridas; antes se guardaban mal y ahora el servidor las rechaza por fuera de horario. Opción: construir los timestamps con el offset de Chile. | 🟡 Pendiente |
 
 Resueltos: policy muerta `cancel by token` (eliminada), `booking-flow.backup.tsx` versionado por error (eliminado), `/api/whatsapp/notify` público sin protección (ahora requiere `cancel_token`), **webhook confirmaba "la cita más próxima" en vez de la correcta** (`src/lib/receipt-matching.ts`: `selectReceiptTarget` + `matchRecipient` deciden por monto ±5% y datos del destinatario cuando hay varias citas pendientes del mismo teléfono; commits `27c9a4a3`/`50ea7aac`, 2026-07-10/14, con tests en `receipt-matching.test.ts`), **`schema.sql` desincronizado** (regenerado 2026-08-24 incorporando `slot_interval_minutes`, policies+constraint de `blocked_slots`, y bucket/policies de `barbershop-logos`; verificado tabla/columna por columna contra la API REST en vivo de Supabase — la decisión de migrar a Supabase CLI quedó descartada por ahora, se sigue versionando con archivos `.sql` sueltos aplicados a mano en el Dashboard. Pendiente aparte, no bloqueante: policies/índices/constraints no se re-verificaron contra `pg_policies`/`pg_indexes` en vivo porque el MCP de Supabase no estuvo disponible en esa sesión — se transcribieron desde los 4 archivos de migración ya aplicados, que son la fuente de verdad documentada).
 
