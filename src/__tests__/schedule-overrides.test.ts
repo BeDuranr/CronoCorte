@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { getDayAvailability, isWithinOpeningHours, toChileWall, type DateOverride } from '@/lib/utils'
+import {
+  enumerateDates, getDayAvailability, groupOverrideRanges, isWithinOpeningHours, toChileWall, type DateOverride,
+} from '@/lib/utils'
 
 // Horario semanal: lunes a viernes 10:00–20:00, sábado 10:00–14:00, domingo cerrado.
 const WEEKLY = [1, 2, 3, 4, 5].map(d => ({ day_of_week: d, start_time: '10:00:00', end_time: '20:00:00' }))
@@ -76,5 +78,59 @@ describe('isWithinOpeningHours', () => {
 
   it('rechaza rangos que cruzan de día', () => {
     expect(isWithinOpeningHours('2026-12-23T19:30:00-03:00', '2026-12-24T00:30:00-03:00', WEEKLY, OVERRIDES)).toBe(false)
+  })
+})
+
+describe('enumerateDates', () => {
+  it('incluye ambos extremos', () => {
+    expect(enumerateDates('2026-12-24', '2026-12-26')).toEqual(['2026-12-24', '2026-12-25', '2026-12-26'])
+  })
+
+  it('un solo día', () => {
+    expect(enumerateDates('2026-12-24', '2026-12-24')).toEqual(['2026-12-24'])
+  })
+
+  it('cruza de mes y de año', () => {
+    expect(enumerateDates('2026-12-30', '2027-01-02')).toEqual(['2026-12-30', '2026-12-31', '2027-01-01', '2027-01-02'])
+  })
+
+  it('no se salta días en el cambio de horario de Chile', () => {
+    // Chile cambia de hora a comienzos de abril y de septiembre
+    expect(enumerateDates('2026-04-03', '2026-04-06')).toHaveLength(4)
+    expect(enumerateDates('2026-09-04', '2026-09-07')).toHaveLength(4)
+  })
+})
+
+describe('groupOverrideRanges', () => {
+  const closed = (date: string, label: string | null = 'Vacaciones'): DateOverride =>
+    ({ date, is_closed: true, start_time: null, end_time: null, label })
+  const open = (date: string, start = '10:00:00', end = '14:00:00'): DateOverride =>
+    ({ date, is_closed: false, start_time: start, end_time: end, label: null })
+
+  it('agrupa días seguidos con la misma configuración', () => {
+    const groups = groupOverrideRanges([closed('2027-01-02'), closed('2027-01-01'), closed('2026-12-31')])
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ start: '2026-12-31', end: '2027-01-02' })
+    expect(groups[0].items).toHaveLength(3)
+  })
+
+  it('separa cuando hay un día de por medio', () => {
+    const groups = groupOverrideRanges([closed('2026-12-24'), closed('2026-12-26')])
+    expect(groups.map(g => [g.start, g.end])).toEqual([['2026-12-24', '2026-12-24'], ['2026-12-26', '2026-12-26']])
+  })
+
+  it('separa días seguidos con distinta configuración o nombre', () => {
+    const groups = groupOverrideRanges([
+      open('2026-12-24'),
+      closed('2026-12-25', 'Navidad'),
+      closed('2026-12-26', 'Vacaciones'),
+      open('2026-12-27', '10:00', '13:00'),
+    ])
+    expect(groups).toHaveLength(4)
+  })
+
+  it('considera iguales las horas con y sin segundos', () => {
+    const groups = groupOverrideRanges([open('2026-12-24', '10:00:00', '14:00:00'), open('2026-12-25', '10:00', '14:00')])
+    expect(groups).toHaveLength(1)
   })
 })

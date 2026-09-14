@@ -312,6 +312,50 @@ export function getDayAvailability(
   return weekly ? { start_time: weekly.start_time, end_time: weekly.end_time } : null
 }
 
+// Día siguiente de una fecha 'yyyy-MM-dd' (sin zona horaria).
+function nextDate(date: string): string {
+  const [yy, mm, dd] = date.split('-').map(Number)
+  return new Date(Date.UTC(yy, mm - 1, dd + 1)).toISOString().slice(0, 10)
+}
+
+// Todas las fechas 'yyyy-MM-dd' entre from y to, ambas incluidas.
+export function enumerateDates(from: string, to: string): string[] {
+  const out: string[] = []
+  const [fy, fm, fd] = from.split('-').map(Number)
+  const [ty, tm, td] = to.split('-').map(Number)
+  const end = Date.UTC(ty, tm - 1, td)
+  for (let t = Date.UTC(fy, fm - 1, fd); t <= end; t += 86_400_000) {
+    out.push(new Date(t).toISOString().slice(0, 10))
+  }
+  return out
+}
+
+// Agrupa horarios especiales de días seguidos con la misma configuración
+// (cerrado/horas y nombre) en rangos, para mostrarlos como "24 → 26 dic".
+// En la BD siguen siendo una fila por día.
+export function groupOverrideRanges<T extends DateOverride>(
+  overrides: T[]
+): { start: string; end: string; items: T[] }[] {
+  const sorted = [...overrides].sort((a, b) => a.date.localeCompare(b.date))
+  const groups: { start: string; end: string; items: T[] }[] = []
+  const sameConfig = (a: DateOverride, b: DateOverride) =>
+    a.is_closed === b.is_closed &&
+    (a.is_closed || (a.start_time?.slice(0, 5) === b.start_time?.slice(0, 5) &&
+                     a.end_time?.slice(0, 5) === b.end_time?.slice(0, 5))) &&
+    (a.label ?? '') === (b.label ?? '')
+
+  for (const o of sorted) {
+    const last = groups[groups.length - 1]
+    if (last && o.date === nextDate(last.end) && sameConfig(last.items[0], o)) {
+      last.items.push(o)
+      last.end = o.date
+    } else {
+      groups.push({ start: o.date, end: o.date, items: [o] })
+    }
+  }
+  return groups
+}
+
 // Convierte un timestamp ISO a fecha y hora de pared en Chile.
 export function toChileWall(iso: string): { date: string; time: string } {
   const wall = new Date(iso).toLocaleString('sv-SE', { timeZone: 'America/Santiago' })
